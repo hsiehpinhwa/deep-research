@@ -4,7 +4,7 @@ nixPkgs = ["nodejs_20", "python311"]
 [phases.install]
 cmds = [
   "npm ci --production",
-  "pip install python-docx"
+  "python3 -m pip install python-docx"
 ]
 
 [start]
