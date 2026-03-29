@@ -144,10 +144,11 @@ async function collectForQuestion(question, maxSources) {
  * 主函式
  */
 export async function runCollector(plan, options = {}) {
+  const tmpDir = options.tmpDir;
   const cacheKey = 'raw_sources.json';
 
   if (!options.force) {
-    const cached = loadTmp(cacheKey);
+    const cached = loadTmp(cacheKey, tmpDir);
     if (cached) {
       logger.info('COLLECTOR', `使用快取的來源資料`);
       return cached;
@@ -170,7 +171,7 @@ export async function runCollector(plan, options = {}) {
     }
   }
 
-  const path = saveTmp(cacheKey, results);
+  const path = saveTmp(cacheKey, results, tmpDir);
   const totalSources = results.reduce((sum, r) => sum + r.sources.length, 0);
   logger.info('COLLECTOR', `蒐集完成：${totalSources} 個來源 → ${path}`);
 

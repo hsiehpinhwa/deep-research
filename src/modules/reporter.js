@@ -6,7 +6,7 @@ import { REPORTER_SYSTEM, buildReporterPrompt, buildSectionPrompt } from '../pro
 /**
  * 從 raw_sources 萃取去重來源清單
  */
-function extractSources(rawSources) {
+function extractSources(rawSources, tmpDir) {
   const seen = new Set();
   const sources = [];
   for (const q of rawSources || []) {
@@ -66,10 +66,11 @@ export async function runReporter(plan, analysis, rawSources, options = {}) {
     options = rawSources;
     rawSources = null;
   }
+  const tmpDir = options.tmpDir;
   const cacheKey = 'report_content.json';
 
   if (!options.force) {
-    const cached = loadTmp(cacheKey);
+    const cached = loadTmp(cacheKey, tmpDir);
     if (cached) {
       logger.info('REPORTER', `使用快取的報告內容`);
       return cached;
@@ -110,12 +111,12 @@ export async function runReporter(plan, analysis, rawSources, options = {}) {
 
   // 注入真實來源（從 rawSources 萃取，或嘗試從快取載入）
   const sources = rawSources
-    ? extractSources(rawSources)
-    : extractSources(loadTmp('raw_sources.json') || []);
+    ? extractSources(rawSources, tmpDir)
+    : extractSources(loadTmp('raw_sources.json', tmpDir) || [], tmpDir);
   report.sources = sources;
   logger.info('REPORTER', `已注入 ${sources.length} 個來源`);
 
-  const path = saveTmp(cacheKey, report);
+  const path = saveTmp(cacheKey, report, tmpDir);
   logger.info('REPORTER', `報告已生成：${fullSections.length} 個章節，儲存至 ${path}`);
 
   return report;

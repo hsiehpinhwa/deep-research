@@ -43,10 +43,11 @@ async function analyzeQuestion(questionData) {
  * 主函式：分析所有子問題
  */
 export async function runAnalyzer(rawSources, options = {}) {
+  const tmpDir = options.tmpDir;
   const cacheKey = 'analysis.json';
 
   if (!options.force) {
-    const cached = loadTmp(cacheKey);
+    const cached = loadTmp(cacheKey, tmpDir);
     if (cached) {
       logger.info('ANALYZER', `使用快取的分析結果（${cached.length} 個子問題）`);
       return cached;
@@ -61,7 +62,7 @@ export async function runAnalyzer(rawSources, options = {}) {
     results.push(analysis);
   }
 
-  const path = saveTmp(cacheKey, results);
+  const path = saveTmp(cacheKey, results, tmpDir);
   logger.info('ANALYZER', `分析完成，已儲存至 ${path}`);
 
   return results;

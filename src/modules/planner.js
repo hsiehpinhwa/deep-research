@@ -4,11 +4,12 @@ import { logger } from '../utils/logger.js';
 import { PLANNER_SYSTEM, buildPlannerPrompt } from '../prompts/planner.prompt.js';
 
 export async function runPlanner(topic, depth = 'standard', options = {}) {
+  const tmpDir = options.tmpDir;
   const cacheKey = 'research_plan.json';
 
   // 允許跳過快取直接重新規劃
   if (!options.force) {
-    const cached = loadTmp(cacheKey);
+    const cached = loadTmp(cacheKey, tmpDir);
     if (cached && cached.topic === topic) {
       logger.info('PLANNER', `使用快取的研究計畫：${topic}`);
       return cached;
@@ -26,7 +27,7 @@ export async function runPlanner(topic, depth = 'standard', options = {}) {
   plan.generated_at = new Date().toISOString();
   plan.topic = topic;
 
-  const path = saveTmp(cacheKey, plan);
+  const path = saveTmp(cacheKey, plan, tmpDir);
   logger.info('PLANNER', `研究計畫已儲存：${path}（${plan.sub_questions?.length} 個子問題）`);
 
   return plan;

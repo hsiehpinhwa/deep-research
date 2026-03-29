@@ -9,8 +9,8 @@ import { tmpPath, rootPath } from '../utils/fileUtils.js';
 /**
  * 執行 CJK 掃描（呼叫 Python 工具）
  */
-function runCJKScanner(reportContent) {
-  const inputPath = tmpPath('report_content.json');
+function runCJKScanner(reportContent, tmpDir) {
+  const inputPath = tmpPath('report_content.json', tmpDir);
   const result = spawnSync('python3', [
     rootPath('tools', 'cjk_scanner.py'),
     '--input', inputPath,
@@ -48,6 +48,7 @@ async function reviseSection(section, feedback) {
  * 主函式：品質審稿迴圈
  */
 export async function runReviewer(reportContent, options = {}) {
+  const tmpDir = options.tmpDir;
   const maxIterations = config.pipeline.maxReviewIterations;
   const threshold = config.pipeline.reviewPassThreshold;
 
@@ -60,7 +61,7 @@ export async function runReviewer(reportContent, options = {}) {
     logger.step('REVIEWER', `第 ${iteration} 輪審稿`);
 
     // CJK 掃描
-    const cjkViolations = runCJKScanner(currentReport);
+    const cjkViolations = runCJKScanner(currentReport, tmpDir);
     if (cjkViolations.length > 0) {
       logger.warn('REVIEWER', `CJK 掃描：發現 ${cjkViolations.length} 個問題`);
     } else {
@@ -123,7 +124,7 @@ export async function runReviewer(reportContent, options = {}) {
   }
 
   // 儲存審稿紀錄
-  saveTmp('review_log.json', reviewLog);
+  saveTmp('review_log.json', reviewLog, tmpDir);
 
   // 將審稿摘要附加至報告
   currentReport.review_summary = {
