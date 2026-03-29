@@ -35,9 +35,12 @@ function buildSourcesMarkdown(reportContent) {
 /**
  * 呼叫 Python .docx 生成器
  */
+// Use venv Python on Railway (has python-docx), fallback to system python3 locally
+const PYTHON_CMD = process.env.PYTHON_CMD || '/app/.venv/bin/python3';
+
 function callDocxGenerator(inputPath, outputDir) {
   const pythonScript = rootPath('tools', 'generate_docx.py');
-  const result = spawnSync('python3', [
+  const result = spawnSync(PYTHON_CMD, [
     pythonScript,
     '--input', inputPath,
     '--output-dir', outputDir,

@@ -1,8 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python311Packages.python-docx"]
+nixPkgs = ["nodejs_20", "python311"]
 
 [phases.install]
-cmds = ["npm ci --production"]
+cmds = [
+  "npm ci --production",
+  "python3 -m venv /app/.venv && /app/.venv/bin/pip install python-docx"
+]
 
 [start]
 cmd = "node server/index.js"
