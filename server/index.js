@@ -8,7 +8,7 @@ import { join, basename } from 'path';
 import { createJob, getJob, updateJobStatus, getActiveJobs } from './redis.js';
 import { runJob } from './jobRunner.js';
 
-const BASE_OUT = './output';
+import { BASE_OUT } from './config.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -108,6 +108,6 @@ const cleanup = Promise.race([
 ]);
 cleanup.then(() => {
   app.listen(PORT, () => {
-    console.log(`[SERVER] DeepBrief API 啟動於 port ${PORT}`);
+    console.log(`[SERVER] Dolphin.Ai API 啟動於 port ${PORT}`);
   });
 });
