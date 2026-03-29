@@ -334,22 +334,41 @@ def build_risk_section(doc, risk_data):
 
 def build_sources_appendix(doc, sources):
     doc.add_page_break()
+
+    # 標題列（帶底線）
     p = doc.add_paragraph()
-    add_run(p, '附錄：資料來源', bold=True, size=16, color=NEXI_BLUE)
-    p.paragraph_format.space_after = Pt(12)
+    add_run(p, '附錄：參考資料來源', bold=True, size=16, color=NEXI_BLUE)
+    p.paragraph_format.space_after = Pt(4)
+
+    # 來源數量小字
+    meta_p = doc.add_paragraph()
+    add_run(meta_p, f'共 {len(sources)} 筆來源　·　由 DeepBrief AI 自動蒐集', size=9, color=LIGHT_GREY)
+    meta_p.paragraph_format.space_after = Pt(14)
 
     for i, s in enumerate(sources, 1):
+        # 標題行
         np = doc.add_paragraph()
-        np.paragraph_format.space_after = Pt(2)
-        add_run(np, f'[{i}]  ', bold=True, size=10, color=NEXI_BLUE)
+        np.paragraph_format.space_after = Pt(1)
+        add_run(np, f'[{i}]  ', bold=True, size=10, color=LIGHT_BLUE)
         add_run(np, s.get('title', '未知來源'), bold=True, size=10, color=CHARCOAL)
 
-        up = doc.add_paragraph()
-        up.paragraph_format.left_indent = Cm(0.6)
-        up.paragraph_format.space_after = Pt(8)
-        add_run(up, s.get('url', ''), size=9, color=LIGHT_BLUE)
-        if s.get('accessed'):
-            add_run(up, f'  （{s["accessed"]}）', size=9, color=LIGHT_GREY)
+        # URL 行
+        url = s.get('url', '')
+        if url:
+            up = doc.add_paragraph()
+            up.paragraph_format.left_indent = Cm(0.7)
+            up.paragraph_format.space_after = Pt(1)
+            add_run(up, url, size=9, color=LIGHT_BLUE)
+
+        # 擷取日期（JS 輸出為 fetched_at，相容 accessed）
+        accessed = s.get('accessed') or s.get('fetched_at', '')
+        if accessed:
+            ap = doc.add_paragraph()
+            ap.paragraph_format.left_indent = Cm(0.7)
+            ap.paragraph_format.space_after = Pt(8)
+            add_run(ap, f'擷取日期：{accessed}', size=8, color=LIGHT_GREY)
+        else:
+            doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
 
 # ── Header / Footer ───────────────────────────────

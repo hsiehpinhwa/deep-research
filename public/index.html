@@ -5,16 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DeepBrief AI — 研究報告生成</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="scan-line"></div>
+
   <div class="container">
-    <div class="logo">Deep<span>Brief</span> AI</div>
-    <p class="tagline">輸入研究主題，AI 自動完成深度產業報告</p>
+    <a href="/" class="logo" style="text-decoration:none">Deep<span>Brief</span> AI</a>
+    <p class="tagline">Intelligence Research Platform · v2.0</p>
 
     <div class="card">
-      <h2>發起研究</h2>
+      <div class="card-corner-tr"></div>
+      <div class="card-corner-bl"></div>
+
+      <h2>發起研究任務</h2>
+
       <form id="researchForm">
         <div class="form-group">
           <label for="topic">研究主題</label>
@@ -26,19 +31,23 @@
           <input type="email" id="email" name="email"
             placeholder="your@company.com" required>
         </div>
-        <button type="submit" class="btn" id="submitBtn">開始研究</button>
+        <button type="submit" class="btn" id="submitBtn">
+          <span id="btnText">INITIATE RESEARCH</span>
+        </button>
       </form>
+
       <div id="alertBox" style="display:none"></div>
     </div>
 
-    <p class="footer">© 2026 DeepBrief AI · 報告生成約需 5–10 分鐘</p>
+    <p class="footer">© 2026 DeepBrief AI &nbsp;·&nbsp; 報告生成約需 5–10 分鐘</p>
   </div>
 
   <script src="/config.js"></script>
   <script>
-    const form = document.getElementById('researchForm');
+    const form      = document.getElementById('researchForm');
     const submitBtn = document.getElementById('submitBtn');
-    const alertBox = document.getElementById('alertBox');
+    const btnText   = document.getElementById('btnText');
+    const alertBox  = document.getElementById('alertBox');
 
     function showAlert(type, message) {
       alertBox.className = 'alert ' + type;
@@ -49,7 +58,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       submitBtn.disabled = true;
-      submitBtn.textContent = '提交中…';
+      btnText.textContent = 'PROCESSING...';
       alertBox.style.display = 'none';
 
       const topic = document.getElementById('topic').value.trim();
@@ -65,14 +74,14 @@
         if (!res.ok) {
           showAlert('error', data.error || '提交失敗，請稍後再試');
           submitBtn.disabled = false;
-          submitBtn.textContent = '開始研究';
+          btnText.textContent = 'INITIATE RESEARCH';
           return;
         }
         window.location.href = '/status/?id=' + encodeURIComponent(data.jobId);
       } catch (err) {
         showAlert('error', '無法連線到伺服器，請確認網路狀態');
         submitBtn.disabled = false;
-        submitBtn.textContent = '開始研究';
+        btnText.textContent = 'INITIATE RESEARCH';
       }
     });
   </script>

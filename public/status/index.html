@@ -5,54 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DeepBrief AI — 研究進度</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="scan-line"></div>
+
   <div class="container">
     <a href="/" class="logo" style="text-decoration:none">Deep<span>Brief</span> AI</a>
-    <p class="tagline">研究進度追蹤</p>
+    <p class="tagline">Mission Status · Real-time Tracking</p>
 
     <div class="card" id="statusCard">
-      <div id="topicLine" style="margin-bottom:1rem;font-size:0.875rem;color:var(--text-muted)"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
-        <h2 id="statusTitle">載入中…</h2>
+      <div class="card-corner-tr"></div>
+      <div class="card-corner-bl"></div>
+
+      <div class="topic-line" id="topicLine">
+        TOPIC &nbsp;/&nbsp; <span id="topicText">—</span>
+      </div>
+
+      <div class="status-header">
+        <div class="status-title" id="statusTitle">LOADING…</div>
         <span id="statusBadge" class="status-badge"></span>
       </div>
 
       <ul class="progress-steps" id="progressSteps"></ul>
 
-      <div id="doneMessage" style="display:none" class="alert success"></div>
-      <div id="downloadSection" style="display:none;margin-top:1.25rem"></div>
-      <div id="errorMessage" style="display:none" class="alert error"></div>
+      <div id="doneMessage"   style="display:none" class="alert success"></div>
+      <div id="downloadSection" style="display:none" class="download-section"></div>
+      <div id="errorMessage"  style="display:none" class="alert error"></div>
     </div>
 
-    <p class="footer">頁面每 5 秒自動更新 · <a href="/" style="color:var(--accent)">發起新研究</a></p>
+    <p class="footer">
+      AUTO-REFRESH EVERY 5s &nbsp;·&nbsp;
+      <a href="/">NEW MISSION</a>
+    </p>
   </div>
 
   <script src="/config.js"></script>
   <script>
     const STEPS = [
-      { key: 'planning',   label: '規劃研究架構' },
-      { key: 'collecting', label: '蒐集資料來源' },
-      { key: 'analyzing',  label: '深度分析內容' },
-      { key: 'writing',    label: '撰寫研究報告' },
-      { key: 'reviewing',  label: '品質審核校稿' },
-      { key: 'delivering', label: '產出與寄送報告' },
-      { key: 'done',       label: '完成' },
+      { key: 'planning',   label: '規劃研究架構',   en: 'PLANNING'   },
+      { key: 'collecting', label: '蒐集資料來源',   en: 'COLLECTING' },
+      { key: 'analyzing',  label: '深度分析內容',   en: 'ANALYZING'  },
+      { key: 'writing',    label: '撰寫研究報告',   en: 'WRITING'    },
+      { key: 'reviewing',  label: '品質審核校稿',   en: 'REVIEWING'  },
+      { key: 'delivering', label: '產出與寄送報告', en: 'DELIVERING' },
+      { key: 'done',       label: '完成',           en: 'COMPLETE'   },
     ];
     const STEP_ORDER = STEPS.map(s => s.key);
 
     const params = new URLSearchParams(window.location.search);
-    const jobId = params.get('id');
+    const jobId  = params.get('id');
     if (!jobId) window.location.href = '/';
 
     let pollTimer = null;
 
     function getStepState(stepKey, currentStatus) {
-      const stepIdx = STEP_ORDER.indexOf(stepKey);
-      const currentIdx = STEP_ORDER.indexOf(currentStatus);
       if (currentStatus === 'error') return 'pending';
+      const stepIdx    = STEP_ORDER.indexOf(stepKey);
+      const currentIdx = STEP_ORDER.indexOf(currentStatus);
       if (stepIdx < currentIdx) return 'done';
       if (stepIdx === currentIdx) return 'active';
       return 'pending';
@@ -61,20 +71,25 @@
     function renderSteps(currentStatus) {
       const ul = document.getElementById('progressSteps');
       ul.innerHTML = '';
-      STEPS.forEach(step => {
+      STEPS.forEach((step, i) => {
         const state = getStepState(step.key, currentStatus);
-        const li = document.createElement('li');
+        const li    = document.createElement('li');
         li.className = state;
 
         const icon = document.createElement('span');
         icon.className = 'step-icon';
-        if (state === 'done') icon.textContent = '✓';
+        if (state === 'done')   icon.textContent = '✓';
+        else if (state === 'active') icon.textContent = '›';
+        else icon.textContent = String(i + 1).padStart(2, '0');
 
-        const text = document.createElement('span');
-        text.textContent = step.label;
+        const wrap = document.createElement('div');
 
+        const label = document.createElement('span');
+        label.textContent = step.label;
+
+        wrap.appendChild(label);
         li.appendChild(icon);
-        li.appendChild(text);
+        li.appendChild(wrap);
         ul.appendChild(li);
       });
     }
@@ -82,28 +97,32 @@
     function updateUI(job) {
       const status = job.status;
 
-      const topicLine = document.getElementById('topicLine');
-      topicLine.textContent = '主題：' + job.topic;
+      // Topic
+      document.getElementById('topicText').textContent = job.topic || '—';
 
+      // Badge
       const badge = document.getElementById('statusBadge');
       badge.className = 'status-badge ' + status;
       const labels = {
-        planning: '規劃中', collecting: '蒐集中', analyzing: '分析中',
-        writing: '撰寫中', reviewing: '審核中', delivering: '寄送中',
-        done: '完成 ✓', error: '錯誤'
+        planning:   '規劃中',  collecting: '蒐集中',
+        analyzing:  '分析中',  writing:    '撰寫中',
+        reviewing:  '審核中',  delivering: '寄送中',
+        done: '完成', error: '錯誤'
       };
       badge.textContent = labels[status] || status;
 
-      document.getElementById('statusTitle').textContent =
-        status === 'done' ? '報告已完成！' :
-        status === 'error' ? '處理失敗' : '研究進行中…';
+      // Title
+      const titleEl = document.getElementById('statusTitle');
+      if (status === 'done')  titleEl.textContent = 'MISSION COMPLETE';
+      else if (status === 'error') titleEl.textContent = 'MISSION FAILED';
+      else titleEl.textContent = 'IN PROGRESS…';
 
       renderSteps(status);
 
       if (status === 'done') {
         const done = document.getElementById('doneMessage');
         done.style.display = 'block';
-        done.textContent = '報告已寄送至 ' + job.email + '，請查收信箱（含垃圾郵件匣）。';
+        done.textContent   = '報告已寄送至 ' + job.email + '，請查收信箱（含垃圾郵件匣）。';
         loadDownloadLinks(jobId);
         stopPoll();
       }
@@ -111,7 +130,7 @@
       if (status === 'error') {
         const err = document.getElementById('errorMessage');
         err.style.display = 'block';
-        err.textContent = job.error_message || '處理過程發生錯誤，請重新提交。';
+        err.textContent   = job.error_message || '處理過程發生錯誤，請重新提交。';
         stopPoll();
       }
     }
@@ -120,10 +139,9 @@
       try {
         const res = await fetch((window.API_URL || '') + '/api/jobs/' + encodeURIComponent(jobId));
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        const job = await res.json();
-        updateUI(job);
+        updateUI(await res.json());
       } catch (e) {
-        document.getElementById('statusTitle').textContent = '無法取得狀態';
+        document.getElementById('statusTitle').textContent = 'CONNECTION ERROR';
       }
     }
 
@@ -136,17 +154,20 @@
         const res = await fetch((window.API_URL || '') + '/api/jobs/' + encodeURIComponent(id) + '/files');
         const { files } = await res.json();
         if (!files || files.length === 0) return;
+
         const section = document.getElementById('downloadSection');
         section.style.display = 'block';
-        const label = document.createElement('p');
-        label.style.cssText = 'font-size:0.875rem;color:var(--text-muted);margin-bottom:0.75rem';
-        label.textContent = '直接下載報告：';
+
+        const label = document.createElement('div');
+        label.className   = 'download-label';
+        label.textContent = 'Download Reports';
         section.appendChild(label);
+
         files.forEach(f => {
           const a = document.createElement('a');
-          a.href = (window.API_URL || '') + f.url;
-          a.textContent = '⬇ ' + f.name;
-          a.style.cssText = 'display:block;padding:0.6rem 1rem;margin-bottom:0.5rem;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-size:0.875rem;font-weight:500';
+          a.href      = (window.API_URL || '') + f.url;
+          a.className = 'download-btn';
+          a.textContent = f.name;
           section.appendChild(a);
         });
       } catch (e) { /* silent */ }
