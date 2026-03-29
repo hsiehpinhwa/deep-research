@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>研究進度 — DeepBrief AI</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="header">
+  <span class="header-logo">DeepBrief AI</span>
+  <span class="header-badge">內部工具</span>
+</header>
+
+<main>
+  <div class="card">
+    <div style="margin-bottom:24px">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:4px">正在研究</p>
+      <h2 id="topic-text" style="font-size:20px;color:var(--navy)">載入中…</h2>
+    </div>
+
+    <div id="success-banner" class="banner banner-success" style="display:none" role="status">
+      <span style="font-size:24px" aria-hidden="true">✅</span>
+      <div>
+        <div class="banner-title">報告已寄出！</div>
+        <div id="success-msg" class="banner-body"></div>
+      </div>
+    </div>
+
+    <div id="error-banner" class="banner banner-error" style="display:none" role="alert">
+      <span style="font-size:24px" aria-hidden="true">❌</span>
+      <div>
+        <div class="banner-title">研究任務失敗</div>
+        <div id="error-msg" class="banner-body"></div>
+      </div>
+    </div>
+
+    <ul class="steps" id="steps-list" aria-live="polite"></ul>
+
+    <p id="email-hint" class="hint"></p>
+
+    <button id="retry-btn" class="btn btn-secondary" style="display:none">
+      再做一份研究
+    </button>
+  </div>
+</main>
+
+<script src="/config.js"></script>
+<script>
+const STEPS = [
+  { key: 'planning',   label: '規劃研究架構' },
+  { key: 'collecting', label: '蒐集多源資料' },
+  { key: 'analyzing',  label: '分析合成資料' },
+  { key: 'writing',    label: '撰寫研究報告' },
+  { key: 'reviewing',  label: '品質審稿' },
+  { key: 'delivering', label: '寄送報告' },
+];
+
+const ORDER = STEPS.map(s => s.key).concat(['done']);
+
+// Use DOM API for safe rendering (no innerHTML with user data)
+function renderSteps(currentStatus) {
+  const list   = document.getElementById('steps-list');
+  const curIdx = ORDER.indexOf(currentStatus);
+  list.textContent = '';
+
+  STEPS.forEach((step, i) => {
+    const isDone   = (i < curIdx) || currentStatus === 'done';
+    const isActive = (i === curIdx) && currentStatus !== 'done' && currentStatus !== 'error';
+
+    const li   = document.createElement('li');
+    li.className = 'step ' + (isDone ? 'done' : isActive ? 'active' : 'pending');
+
+    const icon = document.createElement('span');
+    icon.className  = 'step-icon';
+    icon.textContent = isDone ? '✓' : isActive ? '◉' : '○';
+
+    const label = document.createElement('span');
+    label.textContent = step.label;
+
+    li.appendChild(icon);
+    li.appendChild(label);
+    list.appendChild(li);
+  });
+}
+
+function showSuccess(email) {
+  document.getElementById('success-banner').style.display = 'flex';
+  document.getElementById('success-msg').textContent =
+    '請查收 ' + email + ' 的信件，報告已作為附件寄出。';
+  document.getElementById('retry-btn').style.display = 'block';
+  document.getElementById('email-hint').style.display = 'none';
+}
+
+function showError(message) {
+  document.getElementById('error-banner').style.display = 'flex';
+  document.getElementById('error-msg').textContent = message || '未知錯誤，請重新提交';
+  document.getElementById('retry-btn').style.display = 'block';
+  document.getElementById('email-hint').style.display = 'none';
+}
+
+async function poll(jobId, email) {
+  try {
+    const res = await fetch(window.API_URL + '/api/jobs/' + jobId);
+    const job = await res.json();
+
+    renderSteps(job.status);
+
+    if (job.status === 'done')  { showSuccess(email); return; }
+    if (job.status === 'error') { showError(job.error_message); return; }
+
+    setTimeout(() => poll(jobId, email), 3000);
+  } catch {
+    setTimeout(() => poll(jobId, email), 5000);
+  }
+}
+
+// Init
+const params = new URLSearchParams(location.search);
+const jobId  = params.get('id');
+const topic  = params.get('topic') || '';
+const email  = params.get('email') || '';
+
+if (!jobId) {
+  window.location.href = '/';
+} else {
+  document.getElementById('topic-text').textContent = topic;
+  document.getElementById('email-hint').textContent =
+    '報告完成後將寄至 ' + email;
+
+  document.getElementById('retry-btn').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  renderSteps('queued');
+  poll(jobId, email);
+}
+</script>
+</body>
+</html>
