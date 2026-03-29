@@ -1,11 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python311"]
+nixPkgs = ["nodejs_20", "python311Packages.python-docx"]
 
 [phases.install]
-cmds = [
-  "npm ci --production",
-  "python3 -m ensurepip --upgrade && python3 -m pip install --break-system-packages python-docx"
-]
+cmds = ["npm ci --production"]
 
 [start]
 cmd = "node server/index.js"
