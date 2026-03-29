@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = [
+  "npm ci --production",
+  "pip install python-docx"
+]
+
+[start]
+cmd = "node server/index.js"
