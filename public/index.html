@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepBrief AI — 深度商業研究引擎</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="header">
+  <span class="header-logo">DeepBrief AI</span>
+  <span class="header-badge">內部工具</span>
+</header>
+
+<main>
+  <div class="card">
+    <h1 class="card-title">深度商業研究引擎</h1>
+    <p class="card-sub">輸入研究主題與 Email，30 分鐘內收到機構等級報告</p>
+
+    <form id="research-form">
+      <div class="form-group">
+        <label for="topic">研究主題</label>
+        <input type="text" id="topic" name="topic"
+          placeholder="例：台積電 2026 競爭格局分析"
+          maxlength="100" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email"
+          placeholder="your@company.com" required>
+      </div>
+      <button type="submit" class="btn btn-primary" id="submit-btn">
+        開始研究 →
+      </button>
+    </form>
+
+    <p class="hint">預計完成時間：15–30 分鐘 · 報告以 Email 附件寄送</p>
+  </div>
+</main>
+
+<script src="/config.js"></script>
+<script>
+  const form = document.getElementById('research-form');
+  const btn  = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+
+    const topic = document.getElementById('topic').value.trim();
+    const email = document.getElementById('email').value.trim();
+
+    try {
+      const res  = await fetch(window.API_URL + '/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || '提交失敗，請稍後再試');
+        btn.disabled = false;
+        btn.textContent = '開始研究 →';
+        return;
+      }
+
+      const params = new URLSearchParams({
+        id:    data.jobId,
+        topic: topic,
+        email: email,
+      });
+      window.location.href = '/status?' + params.toString();
+    } catch {
+      alert('無法連線至伺服器，請確認網路後再試');
+      btn.disabled = false;
+      btn.textContent = '開始研究 →';
+    }
+  });
+</script>
+</body>
+</html>
