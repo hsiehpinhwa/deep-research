@@ -3,8 +3,13 @@ import { Resend } from 'resend';
 import { readFileSync, existsSync } from 'fs';
 import { basename } from 'path';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM   = process.env.RESEND_FROM || 'DeepBrief AI <research@deepbrief.ai>';
+// Lazy init: avoid throwing at module load when RESEND_API_KEY is not yet set
+let _resend = null;
+function getResend() {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
+const FROM = process.env.RESEND_FROM || 'DeepBrief AI <research@deepbrief.ai>';
 
 export async function sendReportEmail({ email, topic, docxPath, summaryPath }) {
   const attachments = [];
@@ -22,7 +27,7 @@ export async function sendReportEmail({ email, topic, docxPath, summaryPath }) {
     });
   }
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to:   [email],
     subject: `[DeepBrief] 「${topic}」研究報告已完成`,

@@ -64,7 +64,12 @@ async function cleanupStaleJobs() {
 }
 
 // Run cleanup BEFORE accepting requests to avoid race condition
-cleanupStaleJobs().then(() => {
+// Wrap with a 5s timeout so a hung Redis connection doesn't block server startup
+const cleanup = Promise.race([
+  cleanupStaleJobs(),
+  new Promise(resolve => setTimeout(resolve, 5000)),
+]);
+cleanup.then(() => {
   app.listen(PORT, () => {
     console.log(`[SERVER] DeepBrief API 啟動於 port ${PORT}`);
   });
