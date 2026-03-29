@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const p=require\\(''''./package.json''''\\); p.name=''''deepbrief-ai''''; require\\(''''fs''''\\).writeFileSync\\(''''./package.json'''', JSON.stringify\\(p,null,2\\)\\)\")",
+      "Bash(pip install:*)",
+      "Bash(node --input-type=module:*)",
+      "Bash(python3 -c \"from docx import Document; print\\(''''python-docx OK''''\\)\")",
+      "Bash(python3 -c \"import tools.cjk_scanner\")",
+      "Bash(python3 tools/cjk_scanner.py --input /dev/null)",
+      "Bash(python3 -c \":*)",
+      "Bash(python3 tools/generate_docx.py --input tmp/test_report.json --output-dir tmp/)",
+      "Read(//Users/ark/**)",
+      "Bash(echo $ANTHROPIC_API_KEY)",
+      "Bash(ls /Users/ark/.claude/*.json)",
+      "Bash(printenv)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)[:10]\\)\")",
+      "Bash(node scripts/setup.js)",
+      "Bash(node scripts/debug_reporter.js)",
+      "Bash(node src/index.js --topic \"台灣半導體產業 2026 展望\" --resume-from reporter --skip-review)",
+      "Bash(node src/index.js --topic \"台灣半導體產業 2026 展望\" --force --skip-review)",
+      "Bash(node src/index.js --topic \"台灣半導體產業 2026 展望\" --resume-from analyzer --skip-review)",
+      "Bash(node src/index.js --topic \"台灣半導體產業 2026 展望\" --resume-from analyzer --force --skip-review)",
+      "Bash(sed -i '' 's/process\\\\.argv\\\\[1\\\\]\\\\.endsWith/process.argv[1]?.endsWith/g' src/modules/planner.js src/modules/collector.js src/modules/analyzer.js src/modules/reporter.js)",
+      "Bash(grep -n \"argv\\\\[1\\\\]\" src/modules/*.js)",
+      "Bash(python3 -m py_compile tools/generate_docx.py)",
+      "Bash(python3 -m py_compile tools/cjk_scanner.py)",
+      "Bash(ls -lh output/*.docx output/*.md)",
+      "Bash(python3 tools/cjk_scanner.py --input tmp/report_content.json)",
+      "Bash(python3 tools/generate_docx.py --input tmp/report_content.json --output output/)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "deepbrief-ai",
+  "version": "1.0.0",
+  "description": "商業深度研究即服務 — 機構等級繁體中文研究報告自動生成引擎",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "research": "node src/index.js",
+    "planner": "node src/modules/planner.js",
+    "collector": "node src/modules/collector.js",
+    "analyzer": "node src/modules/analyzer.js",
+    "reporter": "node src/modules/reporter.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "axios": "^1.6.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0"
+  }
+}
