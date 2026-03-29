@@ -3,8 +3,12 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
+import { createReadStream, existsSync, readdirSync } from 'fs';
+import { join, basename } from 'path';
 import { createJob, getJob, updateJobStatus, getActiveJobs } from './redis.js';
 import { runJob } from './jobRunner.js';
+
+const BASE_OUT = './output';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +42,36 @@ app.get('/api/jobs/:id', async (req, res) => {
   const job = await getJob(req.params.id);
   if (!job) return res.status(404).json({ error: '找不到此任務' });
   res.json(job);
+});
+
+// GET /api/jobs/:id/files — list downloadable files for a completed job
+app.get('/api/jobs/:id/files', async (req, res) => {
+  const job = await getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: '找不到此任務' });
+  if (job.status !== 'done') return res.json({ files: [] });
+
+  const outDir = join(BASE_OUT, req.params.id);
+  if (!existsSync(outDir)) return res.json({ files: [] });
+
+  const files = readdirSync(outDir)
+    .filter(f => f.endsWith('.docx'))
+    .map(f => ({ name: f, url: `/api/jobs/${req.params.id}/download/${encodeURIComponent(f)}` }));
+
+  res.json({ files });
+});
+
+// GET /api/jobs/:id/download/:filename — stream file download
+app.get('/api/jobs/:id/download/:filename', async (req, res) => {
+  const job = await getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: '找不到此任務' });
+
+  const filename = basename(decodeURIComponent(req.params.filename)); // prevent path traversal
+  const filePath = join(BASE_OUT, req.params.id, filename);
+  if (!existsSync(filePath)) return res.status(404).json({ error: '檔案不存在' });
+
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  createReadStream(filePath).pipe(res);
 });
 
 // GET /health — health check

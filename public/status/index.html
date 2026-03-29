@@ -23,6 +23,7 @@
       <ul class="progress-steps" id="progressSteps"></ul>
 
       <div id="doneMessage" style="display:none" class="alert success"></div>
+      <div id="downloadSection" style="display:none;margin-top:1.25rem"></div>
       <div id="errorMessage" style="display:none" class="alert error"></div>
     </div>
 
@@ -103,6 +104,7 @@
         const done = document.getElementById('doneMessage');
         done.style.display = 'block';
         done.textContent = '報告已寄送至 ' + job.email + '，請查收信箱（含垃圾郵件匣）。';
+        loadDownloadLinks(jobId);
         stopPoll();
       }
 
@@ -127,6 +129,27 @@
 
     function stopPoll() {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    async function loadDownloadLinks(id) {
+      try {
+        const res = await fetch((window.API_URL || '') + '/api/jobs/' + encodeURIComponent(id) + '/files');
+        const { files } = await res.json();
+        if (!files || files.length === 0) return;
+        const section = document.getElementById('downloadSection');
+        section.style.display = 'block';
+        const label = document.createElement('p');
+        label.style.cssText = 'font-size:0.875rem;color:var(--text-muted);margin-bottom:0.75rem';
+        label.textContent = '直接下載報告：';
+        section.appendChild(label);
+        files.forEach(f => {
+          const a = document.createElement('a');
+          a.href = (window.API_URL || '') + f.url;
+          a.textContent = '⬇ ' + f.name;
+          a.style.cssText = 'display:block;padding:0.6rem 1rem;margin-bottom:0.5rem;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-size:0.875rem;font-weight:500';
+          section.appendChild(a);
+        });
+      } catch (e) { /* silent */ }
     }
 
     fetchStatus();
