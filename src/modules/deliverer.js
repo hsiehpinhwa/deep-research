@@ -79,7 +79,8 @@ export async function runDeliverer(reportContent, options = {}) {
     callDocxGenerator(finalJsonPath, outDir);
   } catch (err) {
     logger.error('DELIVERER', `docx 生成失敗：${err.message}`);
-    logger.warn('DELIVERER', '繼續生成其他交付物...');
+    logger.error('DELIVERER', err.stack || '');
+    logger.warn('DELIVERER', '繼續生成其他交付物（無 .docx 附件）...');
   }
 
   // 找到生成的 .docx 路徑（供 mailer.js 讀取）

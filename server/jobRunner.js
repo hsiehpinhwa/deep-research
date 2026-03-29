@@ -38,7 +38,17 @@ export async function runJob(jobId, topic, email) {
 
   await updateJobStatus(jobId, 'delivering');
   const { docxPath, summaryPath } = await runDeliverer(reviewed, opts);
-  await sendReportEmail({ email, topic, docxPath, summaryPath });
+
+  // Log docx generation result for debugging
+  console.log(`[JOB ${jobId}] docxPath=${docxPath}, summaryPath=${summaryPath}`);
+
+  const emailResult = await sendReportEmail({ email, topic, docxPath, summaryPath });
+  // Resend returns { error } on failure instead of throwing
+  if (emailResult?.error) {
+    console.error(`[JOB ${jobId}] Email 寄送失敗:`, JSON.stringify(emailResult.error));
+  } else {
+    console.log(`[JOB ${jobId}] Email 已寄出至 ${email}`);
+  }
 
   await updateJobStatus(jobId, 'done');
 }

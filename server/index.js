@@ -54,7 +54,7 @@ app.get('/api/jobs/:id/files', async (req, res) => {
   if (!existsSync(outDir)) return res.json({ files: [] });
 
   const files = readdirSync(outDir)
-    .filter(f => f.endsWith('.docx'))
+    .filter(f => f.endsWith('.docx') || f.endsWith('.md'))
     .map(f => ({ name: f, url: `/api/jobs/${req.params.id}/download/${encodeURIComponent(f)}` }));
 
   res.json({ files });
@@ -69,8 +69,11 @@ app.get('/api/jobs/:id/download/:filename', async (req, res) => {
   const filePath = join(BASE_OUT, req.params.id, filename);
   if (!existsSync(filePath)) return res.status(404).json({ error: '檔案不存在' });
 
+  const contentType = filename.endsWith('.docx')
+    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : 'text/markdown; charset=utf-8';
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Type', contentType);
   createReadStream(filePath).pipe(res);
 });
 
