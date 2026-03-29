@@ -33,7 +33,10 @@ export async function runJob(jobId, topic, email) {
 
   const plan       = await stage('planning',   () => runPlanner(topic, 'standard', opts));
   const rawSources = await stage('collecting', () => runCollector(plan, opts));
-  const analysis   = await stage('analyzing',  () => runAnalyzer(rawSources, opts));
+
+  // Pass research_mode from planner to analyzer so it picks the right framework
+  const analyzerOpts = { ...opts, research_mode: plan.research_mode };
+  const analysis   = await stage('analyzing',  () => runAnalyzer(rawSources, analyzerOpts));
   const report     = await stage('writing',    () => runReporter(plan, analysis, rawSources, opts));
   const reviewed   = await stage('reviewing',  () => runReviewer(report, opts));
   const { docxPath, summaryPath } = await stage('delivering', () => runDeliverer(reviewed, opts));

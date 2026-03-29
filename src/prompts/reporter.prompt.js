@@ -12,6 +12,8 @@ export const REPORTER_SYSTEM = `你是機構等級研究報告的資深撰寫人
  */
 export const buildReporterPrompt = (plan, analysis, mode = 'skeleton') => {
   const outline = plan.report_outline;
+  const isCompany = plan.research_mode === 'company';
+
   const analysisText = analysis.map(a => {
     const s = a.synthesis;
     const insightLines = s.key_insights?.map(i =>
@@ -27,9 +29,18 @@ export const buildReporterPrompt = (plan, analysis, mode = 'skeleton') => {
 缺口：${s.gaps?.join('；') || '（無）'}`;
   }).join('\n\n---\n\n');
 
+  const companyGuidance = isCompany ? `
+## 企業研究報告特殊要求
+- report_type 應為「公司研究」或「競爭分析」
+- 章節應涵蓋：公司概況、財務表現、競爭定位、產品與營運、SWOT 分析、投資觀點
+- executive_summary 的 key_findings 應包含至少一條財務數據（營收/獲利/成長率）
+- executive_summary 的 recommendations 應包含明確的投資建議或策略建議
+- 研究標的：${plan.company_name || plan.topic}${plan.ticker ? `（${plan.ticker}）` : ''}
+` : '';
+
   return `## 研究主題
 ${plan.topic}
-
+${companyGuidance}
 ## 報告章節大綱
 ${outline?.sections?.map(s => `- ${s.title}`).join('\n') || '請自行設計 5 個章節'}
 
@@ -43,7 +54,7 @@ ${analysisText}
   "meta": {
     "title": "報告完整標題",
     "subtitle": "副標題（含年份）",
-    "report_type": "產業分析",
+    "report_type": "${isCompany ? '公司研究' : '產業分析'}",
     "date": "2026年3月",
     "topic": "${plan.topic}"
   },
@@ -75,6 +86,8 @@ ${analysisText}
  * 章節正文模式：生成單一章節的完整正文
  */
 export const buildSectionPrompt = (sectionDef, plan, analysis) => {
+  const isCompany = plan.research_mode === 'company';
+
   // 找到與此章節相關的分析
   const linked = (sectionDef.linked_questions || []);
   const relevantAnalysis = analysis
@@ -90,6 +103,12 @@ export const buildSectionPrompt = (sectionDef, plan, analysis) => {
 數據：${s.data_points?.map(d => typeof d === 'string' ? d : d.claim).join('；') || '無'}`;
       }).join('\n\n')
     : '（無來源資料，請依 Claude 的知識撰寫）';
+
+  const companyWritingGuide = isCompany ? `
+- 財務數據章節：以表格化思維呈現（「營收 XX 億元，年增 XX%，毛利率 XX%」），數字務必標明年份與單位
+- 競爭定位章節：使用波特五力或同業比較框架
+- SWOT 章節：分四個小段落（優勢、劣勢、機會、威脅），每段 2-3 個要點
+- 投資觀點章節：包含估值指標（PE/PB）、法人看法、風險提示` : '';
 
   return `## 任務
 為研究報告撰寫以下章節的完整正文。
@@ -110,5 +129,5 @@ ${analysisContext}
 - 分為 3-4 個段落，每段 150-250 字
 - 每段開門見山提出論點，再展開分析
 - 使用台灣商業寫作規範，避免翻譯腔
-- 若無來源資料，依 Claude 的知識撰寫，不要說「根據分析」或「依據資料」等空話`;
+- 若無來源資料，依 Claude 的知識撰寫，不要說「根據分析」或「依據資料」等空話${companyWritingGuide}`;
 };

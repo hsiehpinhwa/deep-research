@@ -1,12 +1,13 @@
 import { callClaudeJSON } from '../utils/claude.js';
 import { saveTmp, loadTmp } from '../utils/fileUtils.js';
 import { logger } from '../utils/logger.js';
-import { ANALYZER_SYSTEM, buildAnalyzerPrompt } from '../prompts/analyzer.prompt.js';
+import { ANALYZER_SYSTEM, COMPANY_ANALYZER_SYSTEM, buildAnalyzerPrompt } from '../prompts/analyzer.prompt.js';
 
 /**
  * 分析單一子問題的所有來源
+ * @param {string} systemPrompt - the analyzer system prompt to use
  */
-async function analyzeQuestion(questionData) {
+async function analyzeQuestion(questionData, systemPrompt) {
   if (!questionData.sources || questionData.sources.length === 0) {
     logger.warn('ANALYZER', `[${questionData.question_id}] 無來源資料，跳過`);
     return {
@@ -25,7 +26,7 @@ async function analyzeQuestion(questionData) {
   logger.step('ANALYZER', `[${questionData.question_id}] 分析 ${questionData.sources.length} 個來源`);
 
   const result = await callClaudeJSON(
-    ANALYZER_SYSTEM,
+    systemPrompt,
     buildAnalyzerPrompt(questionData),
     { maxTokens: 8192 }
   );
@@ -41,6 +42,8 @@ async function analyzeQuestion(questionData) {
 
 /**
  * 主函式：分析所有子問題
+ * @param {Array} rawSources - collected sources per question
+ * @param {object} options - { force, tmpDir, research_mode }
  */
 export async function runAnalyzer(rawSources, options = {}) {
   const tmpDir = options.tmpDir;
@@ -54,11 +57,19 @@ export async function runAnalyzer(rawSources, options = {}) {
     }
   }
 
+  // Pick system prompt based on research mode
+  const isCompany = options.research_mode === 'company';
+  const systemPrompt = isCompany ? COMPANY_ANALYZER_SYSTEM : ANALYZER_SYSTEM;
+
+  if (isCompany) {
+    logger.step('ANALYZER', '使用企業研究分析框架（波特五力 / SWOT / 財報解讀）');
+  }
+
   const results = [];
 
   // 逐一處理（分析較耗 token，不平行以控制成本）
   for (const questionData of rawSources) {
-    const analysis = await analyzeQuestion(questionData);
+    const analysis = await analyzeQuestion(questionData, systemPrompt);
     results.push(analysis);
   }
 

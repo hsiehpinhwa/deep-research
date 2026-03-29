@@ -5,6 +5,41 @@ import config from '../config.js';
 
 const MAX_CONTENT_CHARS = 6000;
 
+// ── Company research: targeted financial sites by market ──
+
+const COMPANY_SITES = {
+  tw: [
+    'goodinfo.tw',
+    'mops.twse.com.tw',
+    'moneydj.com',
+    'money.udn.com',
+    'cnyes.com',
+    'cw.com.tw',
+  ],
+  hk: [
+    'aastocks.com',
+    'hkexnews.hk',
+    'finance.now.com',
+    'cnyes.com',
+    'hk01.com',
+  ],
+  general: [
+    'cnyes.com',
+    'cw.com.tw',
+    'money.udn.com',
+  ],
+};
+
+/**
+ * Build site-scoped search suffix for company research.
+ * Returns e.g. "site:goodinfo.tw OR site:mops.twse.com.tw"
+ * Only the top 3 sites are used to keep query concise.
+ */
+function buildSiteSuffix(market) {
+  const sites = COMPANY_SITES[market] || COMPANY_SITES.general;
+  return sites.slice(0, 3).map(s => `site:${s}`).join(' OR ');
+}
+
 /**
  * Firecrawl 搜尋（主要搜尋引擎）
  */
@@ -75,20 +110,43 @@ async function searchExa(query, numResults = 5) {
 
 /**
  * 處理單一子問題
+ * @param {object} question - sub_question from planner
+ * @param {number} maxSources - max sources per question
+ * @param {object} planMeta - { research_mode, market } from plan
  */
-async function collectForQuestion(question, maxSources) {
+async function collectForQuestion(question, maxSources, planMeta = {}) {
   const kw = question.search_keywords;
+  const isCompany = planMeta.research_mode === 'company';
+  const market = planMeta.market || 'general';
+
   // 中文搜尋為主，英文補充
   const queries = [kw.zh, kw.en].filter(Boolean);
-  logger.step('COLLECTOR', `[${question.id}] 搜尋：${kw.zh}`);
+  logger.step('COLLECTOR', `[${question.id}] 搜尋：${kw.zh}${isCompany ? ` (企業研究/${market})` : ''}`);
 
   let allResults = [];
 
-  // 先用 Firecrawl search
-  for (const q of queries) {
-    if (allResults.length >= 6) break;
-    const results = await searchFirecrawl(q, 4);
-    allResults.push(...results);
+  if (isCompany) {
+    // ── Company mode: two-pass search ──
+    // Pass 1: site-scoped search for structured financial data
+    const siteSuffix = buildSiteSuffix(market);
+    const scopedQuery = `${kw.zh} ${siteSuffix}`;
+    logger.info('COLLECTOR', `[${question.id}] 目標網站搜尋: ${scopedQuery.slice(0, 80)}...`);
+    const scopedResults = await searchFirecrawl(scopedQuery, 3);
+    allResults.push(...scopedResults);
+
+    // Pass 2: general search for broader coverage (news, analysis, etc.)
+    for (const q of queries) {
+      if (allResults.length >= 8) break;
+      const results = await searchFirecrawl(q, 3);
+      allResults.push(...results);
+    }
+  } else {
+    // ── Market mode: original behavior ──
+    for (const q of queries) {
+      if (allResults.length >= 6) break;
+      const results = await searchFirecrawl(q, 4);
+      allResults.push(...results);
+    }
   }
 
   // Firecrawl 無結果時用 Exa 備援
@@ -157,13 +215,22 @@ export async function runCollector(plan, options = {}) {
 
   const maxSources = config.pipeline.maxSourcesPerQuestion;
   const questions = plan.sub_questions || [];
+  const planMeta = {
+    research_mode: plan.research_mode || 'market',
+    market: plan.market || 'general',
+  };
+
+  if (planMeta.research_mode === 'company') {
+    logger.step('COLLECTOR', `企業研究模式：${plan.company_name || plan.topic}（${planMeta.market}）`);
+  }
+
   const results = [];
 
   const BATCH_SIZE = 3;
   for (let i = 0; i < questions.length; i += BATCH_SIZE) {
     const batch = questions.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.all(
-      batch.map(q => collectForQuestion(q, maxSources))
+      batch.map(q => collectForQuestion(q, maxSources, planMeta))
     );
     results.push(...batchResults);
     if (i + BATCH_SIZE < questions.length) {
