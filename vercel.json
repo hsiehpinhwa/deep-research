@@ -1,5 +1,8 @@
 {
+  "framework": null,
   "outputDirectory": "public",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "buildCommand": null,
+  "installCommand": null
 }
