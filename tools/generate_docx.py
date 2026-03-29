@@ -138,9 +138,9 @@ def build_cover_page(doc, meta):
         return p
 
     # 品牌標誌列
-    cover_para('DeepBrief AI', 13, bold=True, color=TEAL,
+    cover_para('Dolphin.Ai', 13, bold=True, color=TEAL,
                space_before=28, space_after=2)
-    cover_para('商業深度研究服務', 9, color=LIGHT_BLUE, space_after=24)
+    cover_para('Dive in Your Market', 9, color=LIGHT_BLUE, space_after=24)
 
     # 裝飾線（以空格＋底線色模擬）
     line_p = cell.add_paragraph()
@@ -181,7 +181,7 @@ def build_cover_page(doc, meta):
     # 日期
     date_str = meta.get('date', datetime.now().strftime('%Y年%-m月'))
     cover_para(date_str, 11, color=LIGHT_GREY, space_before=6, space_after=4)
-    cover_para('本報告由 DeepBrief AI 輔助生成', 8, color=RGBColor(0x77, 0x88, 0xAA),
+    cover_para('本報告由 Dolphin.Ai 輔助生成', 8, color=RGBColor(0x77, 0x88, 0xAA),
                space_after=12)
 
     doc.add_page_break()
@@ -342,7 +342,7 @@ def build_sources_appendix(doc, sources):
 
     # 來源數量小字
     meta_p = doc.add_paragraph()
-    add_run(meta_p, f'共 {len(sources)} 筆來源　·　由 DeepBrief AI 自動蒐集', size=9, color=LIGHT_GREY)
+    add_run(meta_p, f'共 {len(sources)} 筆來源　·　由 Dolphin.Ai 自動蒐集', size=9, color=LIGHT_GREY)
     meta_p.paragraph_format.space_after = Pt(14)
 
     for i, s in enumerate(sources, 1):
@@ -383,7 +383,7 @@ def add_header_footer(doc, title):
         hp = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
         hp.clear()
         hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        add_run(hp, f'DeepBrief AI  |  {short_title}', size=8, color=LIGHT_GREY)
+        add_run(hp, f'Dolphin.Ai  |  {short_title}', size=8, color=LIGHT_GREY)
 
         # 頁尾
         footer = sec.footer
@@ -397,7 +397,7 @@ def add_header_footer(doc, title):
 
         # 使用 tab 分左中右
         fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        add_run(fp, '本報告由 DeepBrief AI 輔助生成  ·  僅供參考，請自行核實資料', size=8, color=LIGHT_GREY)
+        add_run(fp, '本報告由 Dolphin.Ai 輔助生成  ·  僅供參考，請自行核實資料', size=8, color=LIGHT_GREY)
 
 
 # ── Main ──────────────────────────────────────────
@@ -467,7 +467,7 @@ def generate_summary_card(report_content: dict, output_path: str):
 
     bp = hcell.add_paragraph()
     bp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_run(bp, 'DeepBrief AI', bold=True, size=11, color=TEAL)
+    add_run(bp, 'Dolphin.Ai', bold=True, size=11, color=TEAL)
 
     title = meta.get('title', meta.get('topic', '研究摘要'))
     title_size = 18 if len(title) <= 25 else (14 if len(title) <= 35 else 12)
@@ -512,7 +512,7 @@ def generate_summary_card(report_content: dict, output_path: str):
     # 頁尾
     efp = doc.add_paragraph()
     efp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_run(efp, f'DeepBrief AI  ·  {meta.get("date", "")}  ·  AI 輔助生成', size=8, color=LIGHT_GREY)
+    add_run(efp, f'Dolphin.Ai  ·  {meta.get("date", "")}  ·  AI 輔助生成', size=8, color=LIGHT_GREY)
 
     doc.save(output_path)
     print(f'[DOCX] ✓ 摘要卡已生成：{output_path}')
