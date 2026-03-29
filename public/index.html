@@ -1,83 +1,80 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DeepBrief AI — 深度商業研究引擎</title>
+  <title>DeepBrief AI — 研究報告生成</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header class="header">
-  <span class="header-logo">DeepBrief AI</span>
-  <span class="header-badge">內部工具</span>
-</header>
+  <div class="container">
+    <div class="logo">Deep<span>Brief</span> AI</div>
+    <p class="tagline">輸入研究主題，AI 自動完成深度產業報告</p>
 
-<main>
-  <div class="card">
-    <h1 class="card-title">深度商業研究引擎</h1>
-    <p class="card-sub">輸入研究主題與 Email，30 分鐘內收到機構等級報告</p>
+    <div class="card">
+      <h2>發起研究</h2>
+      <form id="researchForm">
+        <div class="form-group">
+          <label for="topic">研究主題</label>
+          <input type="text" id="topic" name="topic"
+            placeholder="例：台灣 AI 伺服器供應鏈分析" required maxlength="200">
+        </div>
+        <div class="form-group">
+          <label for="email">報告寄送 Email</label>
+          <input type="email" id="email" name="email"
+            placeholder="your@company.com" required>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">開始研究</button>
+      </form>
+      <div id="alertBox" style="display:none"></div>
+    </div>
 
-    <form id="research-form">
-      <div class="form-group">
-        <label for="topic">研究主題</label>
-        <input type="text" id="topic" name="topic"
-          placeholder="例：台積電 2026 競爭格局分析"
-          maxlength="100" required>
-      </div>
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input type="email" id="email" name="email"
-          placeholder="your@company.com" required>
-      </div>
-      <button type="submit" class="btn btn-primary" id="submit-btn">
-        開始研究 →
-      </button>
-    </form>
-
-    <p class="hint">預計完成時間：15–30 分鐘 · 報告以 Email 附件寄送</p>
+    <p class="footer">© 2026 DeepBrief AI · 報告生成約需 5–10 分鐘</p>
   </div>
-</main>
 
-<script src="/config.js"></script>
-<script>
-  const form = document.getElementById('research-form');
-  const btn  = document.getElementById('submit-btn');
+  <script src="/config.js"></script>
+  <script>
+    const form = document.getElementById('researchForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const alertBox = document.getElementById('alertBox');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    btn.disabled = true;
-    btn.textContent = '提交中…';
-
-    const topic = document.getElementById('topic').value.trim();
-    const email = document.getElementById('email').value.trim();
-
-    try {
-      const res  = await fetch(window.API_URL + '/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, email }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error || '提交失敗，請稍後再試');
-        btn.disabled = false;
-        btn.textContent = '開始研究 →';
-        return;
-      }
-
-      const params = new URLSearchParams({
-        id:    data.jobId,
-        topic: topic,
-        email: email,
-      });
-      window.location.href = '/status?' + params.toString();
-    } catch {
-      alert('無法連線至伺服器，請確認網路後再試');
-      btn.disabled = false;
-      btn.textContent = '開始研究 →';
+    function showAlert(type, message) {
+      alertBox.className = 'alert ' + type;
+      alertBox.textContent = message;
+      alertBox.style.display = 'block';
     }
-  });
-</script>
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.textContent = '提交中…';
+      alertBox.style.display = 'none';
+
+      const topic = document.getElementById('topic').value.trim();
+      const email = document.getElementById('email').value.trim();
+
+      try {
+        const res = await fetch((window.API_URL || '') + '/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, email })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('error', data.error || '提交失敗，請稍後再試');
+          submitBtn.disabled = false;
+          submitBtn.textContent = '開始研究';
+          return;
+        }
+        window.location.href = '/status/?id=' + encodeURIComponent(data.jobId);
+      } catch (err) {
+        showAlert('error', '無法連線到伺服器，請確認網路狀態');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '開始研究';
+      }
+    });
+  </script>
 </body>
 </html>

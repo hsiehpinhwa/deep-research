@@ -1,140 +1,136 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>研究進度 — DeepBrief AI</title>
+  <title>DeepBrief AI — 研究進度</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header class="header">
-  <span class="header-logo">DeepBrief AI</span>
-  <span class="header-badge">內部工具</span>
-</header>
+  <div class="container">
+    <a href="/" class="logo" style="text-decoration:none">Deep<span>Brief</span> AI</a>
+    <p class="tagline">研究進度追蹤</p>
 
-<main>
-  <div class="card">
-    <div style="margin-bottom:24px">
-      <p style="font-size:13px;color:var(--gray);margin-bottom:4px">正在研究</p>
-      <h2 id="topic-text" style="font-size:20px;color:var(--navy)">載入中…</h2>
-    </div>
-
-    <div id="success-banner" class="banner banner-success" style="display:none" role="status">
-      <span style="font-size:24px" aria-hidden="true">✅</span>
-      <div>
-        <div class="banner-title">報告已寄出！</div>
-        <div id="success-msg" class="banner-body"></div>
+    <div class="card" id="statusCard">
+      <div id="topicLine" style="margin-bottom:1rem;font-size:0.875rem;color:var(--text-muted)"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h2 id="statusTitle">載入中…</h2>
+        <span id="statusBadge" class="status-badge"></span>
       </div>
+
+      <ul class="progress-steps" id="progressSteps"></ul>
+
+      <div id="doneMessage" style="display:none" class="alert success"></div>
+      <div id="errorMessage" style="display:none" class="alert error"></div>
     </div>
 
-    <div id="error-banner" class="banner banner-error" style="display:none" role="alert">
-      <span style="font-size:24px" aria-hidden="true">❌</span>
-      <div>
-        <div class="banner-title">研究任務失敗</div>
-        <div id="error-msg" class="banner-body"></div>
-      </div>
-    </div>
-
-    <ul class="steps" id="steps-list" aria-live="polite"></ul>
-
-    <p id="email-hint" class="hint"></p>
-
-    <button id="retry-btn" class="btn btn-secondary" style="display:none">
-      再做一份研究
-    </button>
+    <p class="footer">頁面每 5 秒自動更新 · <a href="/" style="color:var(--accent)">發起新研究</a></p>
   </div>
-</main>
 
-<script src="/config.js"></script>
-<script>
-const STEPS = [
-  { key: 'planning',   label: '規劃研究架構' },
-  { key: 'collecting', label: '蒐集多源資料' },
-  { key: 'analyzing',  label: '分析合成資料' },
-  { key: 'writing',    label: '撰寫研究報告' },
-  { key: 'reviewing',  label: '品質審稿' },
-  { key: 'delivering', label: '寄送報告' },
-];
+  <script src="/config.js"></script>
+  <script>
+    const STEPS = [
+      { key: 'planning',   label: '規劃研究架構' },
+      { key: 'collecting', label: '蒐集資料來源' },
+      { key: 'analyzing',  label: '深度分析內容' },
+      { key: 'writing',    label: '撰寫研究報告' },
+      { key: 'reviewing',  label: '品質審核校稿' },
+      { key: 'delivering', label: '產出與寄送報告' },
+      { key: 'done',       label: '完成' },
+    ];
+    const STEP_ORDER = STEPS.map(s => s.key);
 
-const ORDER = STEPS.map(s => s.key).concat(['done']);
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get('id');
+    if (!jobId) window.location.href = '/';
 
-// Use DOM API for safe rendering (no innerHTML with user data)
-function renderSteps(currentStatus) {
-  const list   = document.getElementById('steps-list');
-  const curIdx = ORDER.indexOf(currentStatus);
-  list.textContent = '';
+    let pollTimer = null;
 
-  STEPS.forEach((step, i) => {
-    const isDone   = (i < curIdx) || currentStatus === 'done';
-    const isActive = (i === curIdx) && currentStatus !== 'done' && currentStatus !== 'error';
+    function getStepState(stepKey, currentStatus) {
+      const stepIdx = STEP_ORDER.indexOf(stepKey);
+      const currentIdx = STEP_ORDER.indexOf(currentStatus);
+      if (currentStatus === 'error') return 'pending';
+      if (stepIdx < currentIdx) return 'done';
+      if (stepIdx === currentIdx) return 'active';
+      return 'pending';
+    }
 
-    const li   = document.createElement('li');
-    li.className = 'step ' + (isDone ? 'done' : isActive ? 'active' : 'pending');
+    function renderSteps(currentStatus) {
+      const ul = document.getElementById('progressSteps');
+      ul.innerHTML = '';
+      STEPS.forEach(step => {
+        const state = getStepState(step.key, currentStatus);
+        const li = document.createElement('li');
+        li.className = state;
 
-    const icon = document.createElement('span');
-    icon.className  = 'step-icon';
-    icon.textContent = isDone ? '✓' : isActive ? '◉' : '○';
+        const icon = document.createElement('span');
+        icon.className = 'step-icon';
+        if (state === 'done') icon.textContent = '✓';
 
-    const label = document.createElement('span');
-    label.textContent = step.label;
+        const text = document.createElement('span');
+        text.textContent = step.label;
 
-    li.appendChild(icon);
-    li.appendChild(label);
-    list.appendChild(li);
-  });
-}
+        li.appendChild(icon);
+        li.appendChild(text);
+        ul.appendChild(li);
+      });
+    }
 
-function showSuccess(email) {
-  document.getElementById('success-banner').style.display = 'flex';
-  document.getElementById('success-msg').textContent =
-    '請查收 ' + email + ' 的信件，報告已作為附件寄出。';
-  document.getElementById('retry-btn').style.display = 'block';
-  document.getElementById('email-hint').style.display = 'none';
-}
+    function updateUI(job) {
+      const status = job.status;
 
-function showError(message) {
-  document.getElementById('error-banner').style.display = 'flex';
-  document.getElementById('error-msg').textContent = message || '未知錯誤，請重新提交';
-  document.getElementById('retry-btn').style.display = 'block';
-  document.getElementById('email-hint').style.display = 'none';
-}
+      const topicLine = document.getElementById('topicLine');
+      topicLine.textContent = '主題：' + job.topic;
 
-async function poll(jobId, email) {
-  try {
-    const res = await fetch(window.API_URL + '/api/jobs/' + jobId);
-    const job = await res.json();
+      const badge = document.getElementById('statusBadge');
+      badge.className = 'status-badge ' + status;
+      const labels = {
+        planning: '規劃中', collecting: '蒐集中', analyzing: '分析中',
+        writing: '撰寫中', reviewing: '審核中', delivering: '寄送中',
+        done: '完成 ✓', error: '錯誤'
+      };
+      badge.textContent = labels[status] || status;
 
-    renderSteps(job.status);
+      document.getElementById('statusTitle').textContent =
+        status === 'done' ? '報告已完成！' :
+        status === 'error' ? '處理失敗' : '研究進行中…';
 
-    if (job.status === 'done')  { showSuccess(email); return; }
-    if (job.status === 'error') { showError(job.error_message); return; }
+      renderSteps(status);
 
-    setTimeout(() => poll(jobId, email), 3000);
-  } catch {
-    setTimeout(() => poll(jobId, email), 5000);
-  }
-}
+      if (status === 'done') {
+        const done = document.getElementById('doneMessage');
+        done.style.display = 'block';
+        done.textContent = '報告已寄送至 ' + job.email + '，請查收信箱（含垃圾郵件匣）。';
+        stopPoll();
+      }
 
-// Init
-const params = new URLSearchParams(location.search);
-const jobId  = params.get('id');
-const topic  = params.get('topic') || '';
-const email  = params.get('email') || '';
+      if (status === 'error') {
+        const err = document.getElementById('errorMessage');
+        err.style.display = 'block';
+        err.textContent = job.error_message || '處理過程發生錯誤，請重新提交。';
+        stopPoll();
+      }
+    }
 
-if (!jobId) {
-  window.location.href = '/';
-} else {
-  document.getElementById('topic-text').textContent = topic;
-  document.getElementById('email-hint').textContent =
-    '報告完成後將寄至 ' + email;
+    async function fetchStatus() {
+      try {
+        const res = await fetch((window.API_URL || '') + '/api/jobs/' + encodeURIComponent(jobId));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const job = await res.json();
+        updateUI(job);
+      } catch (e) {
+        document.getElementById('statusTitle').textContent = '無法取得狀態';
+      }
+    }
 
-  document.getElementById('retry-btn').addEventListener('click', () => {
-    window.location.href = '/';
-  });
+    function stopPoll() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
 
-  renderSteps('queued');
-  poll(jobId, email);
-}
-</script>
+    fetchStatus();
+    pollTimer = setInterval(fetchStatus, 5000);
+  </script>
 </body>
 </html>
