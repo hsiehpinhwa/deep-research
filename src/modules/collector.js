@@ -235,16 +235,19 @@ async function scrapeDirectFinancialURLs(companyName, ticker, market) {
     }
   }
 
-  // Phase 2: Targeted search for annual reports and financial news
+  // Phase 2: Targeted searches — annual reports, financial news, industry analysis
   const searchQueries = [
-    `"${companyName}" 2024 年報 業績 營收`,
-    `"${companyName}" annual results 2024 revenue profit`,
+    `"${companyName}" 2024 年報 業績 營收 毛利率`,
+    `"${companyName}" 2025 中期報告 業績 盈利`,
+    `"${companyName}" annual results 2024 2025 revenue profit margin`,
+    `"${companyName}" 股權結構 大股東 管理層`,
+    `"${companyName}" 競爭 市佔率 行業排名`,
   ];
 
   for (const q of searchQueries) {
-    if (results.length >= 6) break;
+    if (results.length >= 12) break;
     logger.info('COLLECTOR', `  搜尋: ${q}`);
-    const searchResults = await searchWithFallback(q, 3);
+    const searchResults = await searchWithFallback(q, 4);
     results.push(...searchResults);
   }
 

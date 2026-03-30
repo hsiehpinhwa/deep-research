@@ -102,13 +102,13 @@ ${analysisText}
 export const buildSectionPrompt = (sectionDef, plan, analysis) => {
   const isCompany = plan.research_mode === 'company';
 
-  // 找到與此章節相關的分析
+  // 找到與此章節相關的分析 — 嚴格只取 linked 的子問題
   const linked = (sectionDef.linked_questions || []);
-  const relevantAnalysis = analysis
-    .filter(a => linked.includes(a.question_id) || linked.length === 0)
-    .slice(0, 3);
+  const relevantAnalysis = linked.length > 0
+    ? analysis.filter(a => linked.includes(a.question_id)).slice(0, 2)
+    : [analysis[0]].filter(Boolean); // fallback: only first question, not all
 
-  // Build context with source URLs visible
+  // Build context — only data_points that haven't been used in previous sections
   const analysisContext = relevantAnalysis.length > 0
     ? relevantAnalysis.map(a => {
         const s = a.synthesis;
@@ -121,7 +121,7 @@ export const buildSectionPrompt = (sectionDef, plan, analysis) => {
 有來源的數據：${dataWithSources}
 ⚠️ 缺口：${s.gaps?.join('；') || '無'}`;
       }).join('\n\n')
-    : '（此章節無來源資料）';
+    : '（此章節無專屬來源資料，請依章節標題做定性分析）';
 
   const companyWritingGuide = isCompany ? `
 - 財務數據章節：以表格化思維呈現（「營收 XX 億元，年增 XX%，毛利率 XX%」），數字務必標明年份與單位
@@ -148,6 +148,7 @@ ${analysisContext}
 ⛔ 不可從 Claude 自身知識編造任何數字。上方「有來源的數據」就是你能用的全部數字。
 ⛔ 若某面向沒有數據，寫定性描述（如「近年穩步成長」），不要編數字。
 ⛔ 不可使用「據估計約 XX 億」「市場規模預計 XX」等無來源的數字。
+⛔ **不可重複引用其他章節已使用的數據。** 如果某個數字（如溢利、EPS）已在前面章節出現過，本章只能簡要提及（如「如前述，2025年溢利大幅回升」），不可再次完整引用數字。每個具體數據點在全篇報告中只應完整出現一次。
 
 ## 寫作要求
 請直接輸出純文字正文（非 JSON、非 markdown）：
@@ -156,5 +157,6 @@ ${analysisContext}
 - 每段開門見山提出論點，再展開分析
 - 使用台灣商業寫作規範，避免翻譯腔
 - 引用數據時標明年份，如「2024 年營收達 XX 億港幣」
-- 若此章節缺乏數據，聚焦在定性分析（產業邏輯、競爭態勢、策略方向），誠實標示資料限制${companyWritingGuide}`;
+- 若此章節缺乏數據，聚焦在定性分析（產業邏輯、競爭態勢、策略方向），誠實標示資料限制
+- **本章節專注於「${sectionDef.title}」的獨特面向，避免與其他章節論述重疊**${companyWritingGuide}`;
 };

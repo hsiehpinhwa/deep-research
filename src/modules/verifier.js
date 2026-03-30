@@ -46,14 +46,24 @@ function cleanUnverifiedClaims(content, claims) {
 
   for (const claim of unverified) {
     if (!claim.text) continue;
-    // Try to find and replace the exact sentence
+    // Try to find and remove the exact text — no placeholder, just remove
     const escaped = claim.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(escaped, 'g');
     if (regex.test(cleaned)) {
-      cleaned = cleaned.replace(regex, '（此數據未獲來源驗證，已移除）');
+      cleaned = cleaned.replace(regex, '');
       logger.warn('VERIFIER', `  移除未驗證聲明: ${claim.text.slice(0, 50)}...`);
     }
   }
+
+  // Clean up artifacts: double commas, double periods, orphaned parentheses, extra spaces
+  cleaned = cleaned
+    .replace(/，，+/g, '，')
+    .replace(/。。+/g, '。')
+    .replace(/（\s*）/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/，。/g, '。')
+    .replace(/。，/g, '。')
+    .trim();
 
   return cleaned;
 }
