@@ -19,7 +19,7 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://localhost:5500')
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
-    else cb(new Error('Not allowed by CORS'));
+    else cb(null, false);
   }
 }));
 app.use(express.json());
