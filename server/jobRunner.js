@@ -7,7 +7,9 @@ import { sendReportEmail } from './mailer.js';
 import { runPlanner }   from '../src/modules/planner.js';
 import { runCollector } from '../src/modules/collector.js';
 import { runAnalyzer }  from '../src/modules/analyzer.js';
+import { runGapFill }   from '../src/modules/gapFill.js';
 import { runReporter }  from '../src/modules/reporter.js';
+import { runVerifier }  from '../src/modules/verifier.js';
 import { runReviewer }  from '../src/modules/reviewer.js';
 import { runDeliverer } from '../src/modules/deliverer.js';
 
@@ -31,14 +33,23 @@ export async function runJob(jobId, topic, email) {
     }
   }
 
+  // ── Pipeline ──
   const plan       = await stage('planning',   () => runPlanner(topic, 'standard', opts));
   const rawSources = await stage('collecting', () => runCollector(plan, opts));
 
-  // Pass research_mode from planner to analyzer so it picks the right framework
   const analyzerOpts = { ...opts, research_mode: plan.research_mode };
   const analysis   = await stage('analyzing',  () => runAnalyzer(rawSources, analyzerOpts));
-  const report     = await stage('writing',    () => runReporter(plan, analysis, rawSources, opts));
-  const reviewed   = await stage('reviewing',  () => runReviewer(report, opts));
+
+  // Gap-fill: second round of collection targeting data gaps
+  const { mergedSources, finalAnalysis } = await stage('gap-filling',
+    () => runGapFill(plan, rawSources, analysis, analyzerOpts));
+
+  const report     = await stage('writing',    () => runReporter(plan, finalAnalysis, mergedSources, opts));
+
+  // Fact verification: check numerical claims against sources
+  const verified   = await stage('verifying',  () => runVerifier(report, finalAnalysis, mergedSources, opts));
+
+  const reviewed   = await stage('reviewing',  () => runReviewer(verified, opts));
   const { docxPath, summaryPath } = await stage('delivering', () => runDeliverer(reviewed, opts));
 
   console.log(`[JOB ${jobId}] docxPath=${docxPath}, summaryPath=${summaryPath}`);

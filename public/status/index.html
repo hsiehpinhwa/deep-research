@@ -41,13 +41,15 @@
   <script src="/config.js"></script>
   <script>
     const STEPS = [
-      { key: 'planning',   label: '規劃研究架構',   en: 'PLANNING'   },
-      { key: 'collecting', label: '蒐集資料來源',   en: 'COLLECTING' },
-      { key: 'analyzing',  label: '深度分析內容',   en: 'ANALYZING'  },
-      { key: 'writing',    label: '撰寫研究報告',   en: 'WRITING'    },
-      { key: 'reviewing',  label: '品質審核校稿',   en: 'REVIEWING'  },
-      { key: 'delivering', label: '產出與寄送報告', en: 'DELIVERING' },
-      { key: 'done',       label: '完成',           en: 'COMPLETE'   },
+      { key: 'planning',     label: '規劃研究架構',   en: 'PLANNING'     },
+      { key: 'collecting',   label: '蒐集資料來源',   en: 'COLLECTING'   },
+      { key: 'analyzing',    label: '深度分析內容',   en: 'ANALYZING'    },
+      { key: 'gap-filling',  label: '補充資料缺口',   en: 'GAP-FILLING'  },
+      { key: 'writing',      label: '撰寫研究報告',   en: 'WRITING'      },
+      { key: 'verifying',    label: '事實驗證',       en: 'VERIFYING'    },
+      { key: 'reviewing',    label: '品質審核校稿',   en: 'REVIEWING'    },
+      { key: 'delivering',   label: '產出與寄送報告', en: 'DELIVERING'   },
+      { key: 'done',         label: '完成',           en: 'COMPLETE'     },
     ];
     const STEP_ORDER = STEPS.map(s => s.key);
 

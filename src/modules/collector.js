@@ -278,12 +278,12 @@ async function searchExa(query, numResults = 5) {
 }
 
 /**
- * 處理單一子問題
+ * 處理單一子問題（exported for gapFill reuse）
  * @param {object} question - sub_question from planner
  * @param {number} maxSources - max sources per question
  * @param {object} planMeta - { research_mode, market } from plan
  */
-async function collectForQuestion(question, maxSources, planMeta = {}) {
+export async function collectForQuestion(question, maxSources, planMeta = {}) {
   const kw = question.search_keywords;
   const isCompany = planMeta.research_mode === 'company';
   const market = planMeta.market || 'general';
