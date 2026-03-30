@@ -12,9 +12,16 @@ import { BASE_OUT } from './config.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5500';
+// Support comma-separated origins: "https://dorphinai.com,https://dorphinai.vercel.app"
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://localhost:5500')
+  .split(',').map(s => s.trim());
 
-app.use(cors({ origin: ALLOWED_ORIGIN }));
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
+    else cb(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json());
 
 // POST /api/jobs — create research job
