@@ -32,7 +32,7 @@ async function generateReportSkeleton(plan, analysis) {
   const skeleton = await callClaudeJSON(
     REPORTER_SYSTEM,
     buildReporterPrompt(plan, analysis, 'skeleton'),
-    { maxTokens: 8192 }
+    { maxTokens: 16384 }
   );
   return skeleton;
 }

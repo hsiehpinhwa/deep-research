@@ -5,6 +5,43 @@ import { logger } from './logger.js';
 const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
 /**
+ * Attempt to repair truncated JSON by closing open brackets/braces.
+ * Returns parsed object or null if repair fails.
+ */
+function repairTruncatedJSON(text) {
+  // Remove trailing comma and whitespace
+  let s = text.replace(/,\s*$/, '');
+
+  // Count open vs close brackets
+  let braces = 0, brackets = 0, inString = false, escape = false;
+  for (const ch of s) {
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') braces++;
+    if (ch === '}') braces--;
+    if (ch === '[') brackets++;
+    if (ch === ']') brackets--;
+  }
+
+  // Close any open string
+  if (inString) s += '"';
+
+  // Close open brackets and braces
+  while (brackets > 0) { s += ']'; brackets--; }
+  while (braces > 0) { s += '}'; braces--; }
+
+  try {
+    const result = JSON.parse(s);
+    console.log('[CLAUDE] 成功修復截斷的 JSON');
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 從可能含說明文字的 Claude 輸出中萃取 JSON
  */
 function extractJSON(text) {
@@ -23,6 +60,9 @@ function extractJSON(text) {
   const openCodeBlock = text.match(/```(?:json)?\s*([\s\S]+)/);
   if (openCodeBlock) {
     try { return JSON.parse(openCodeBlock[1].trim()); } catch {}
+    // Try to repair truncated JSON
+    const repaired = repairTruncatedJSON(openCodeBlock[1].trim());
+    if (repaired) return repaired;
   }
 
   // 萃取最外層的 { } 或 [ ]（貪婪，取最長匹配）
@@ -31,13 +71,21 @@ function extractJSON(text) {
     try { return JSON.parse(objMatch[1]); } catch {}
   }
 
+  // Try to find and repair truncated object (no closing brace)
+  const truncObj = text.match(/(\{[\s\S]+)/);
+  if (truncObj) {
+    const repaired = repairTruncatedJSON(truncObj[1].trim());
+    if (repaired) return repaired;
+  }
+
   const arrMatch = text.match(/(\[[\s\S]*\])/);
   if (arrMatch) {
     try { return JSON.parse(arrMatch[1]); } catch {}
   }
 
   // 印出原始回應供除錯
-  console.error('[CLAUDE] 無法解析 JSON，回應前300字：\n', text.slice(0, 300));
+  console.error('[CLAUDE] 無法解析 JSON，回應前500字：\n', text.slice(0, 500));
+  console.error('[CLAUDE] 回應末尾200字：\n', text.slice(-200));
   throw new Error('無法從回應中萃取有效 JSON');
 }
 
