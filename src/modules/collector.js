@@ -84,6 +84,68 @@ async function scrapeFirecrawl(url) {
 }
 
 /**
+ * Direct scrape known financial data URLs for a company.
+ * Returns array of { url, title, markdown } objects.
+ */
+async function scrapeDirectFinancialURLs(companyName, ticker, market) {
+  const targets = [];
+
+  if (market === 'hk' || market === 'general') {
+    // HKEX news: search for company filings (annual reports, interim reports)
+    targets.push({
+      url: `https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=ZH`,
+      searchQuery: `${companyName} site:hkexnews.hk 年報 OR 業績`,
+    });
+    // Try company name on major HK financial portals
+    targets.push({ searchQuery: `${companyName} 年報 2024 2025 業績 site:aastocks.com` });
+    targets.push({ searchQuery: `${companyName} annual report revenue profit` });
+    targets.push({ searchQuery: `"${companyName}" 營收 利潤 2024` });
+  }
+
+  if (market === 'tw') {
+    // Goodinfo direct URL if ticker is known (e.g. "2912.TW" → "2912")
+    const stockId = ticker?.replace(/\.TW$/i, '');
+    if (stockId) {
+      targets.push({
+        url: `https://goodinfo.tw/tw/StockFinDetail.asp?STOCK_ID=${stockId}`,
+        title: `${companyName} Goodinfo 財務資料`,
+      });
+      targets.push({
+        url: `https://goodinfo.tw/tw/StockAssetsStatus.asp?STOCK_ID=${stockId}`,
+        title: `${companyName} Goodinfo 資產負債`,
+      });
+    }
+    targets.push({ searchQuery: `${companyName} 年報 營收 2024 2025 site:mops.twse.com.tw` });
+  }
+
+  const results = [];
+
+  for (const target of targets) {
+    if (results.length >= 4) break;
+
+    if (target.url) {
+      // Direct scrape
+      logger.info('COLLECTOR', `直接抓取: ${target.url}`);
+      const content = await scrapeFirecrawl(target.url);
+      if (content && content.length > 200) {
+        results.push({
+          url: target.url,
+          title: target.title || target.url,
+          markdown: content,
+        });
+      }
+    } else if (target.searchQuery) {
+      // Search-based targeting
+      const searchResults = await searchFirecrawl(target.searchQuery, 2);
+      results.push(...searchResults);
+    }
+  }
+
+  logger.info('COLLECTOR', `直接抓取財務資料：取得 ${results.length} 個來源`);
+  return results;
+}
+
+/**
  * Exa 搜尋（備援）
  */
 async function searchExa(query, numResults = 5) {
@@ -232,6 +294,18 @@ export async function runCollector(plan, options = {}) {
     logger.step('COLLECTOR', `企業研究模式：${plan.company_name || plan.topic}（${planMeta.market}）`);
   }
 
+  // ── Pass 0: Direct financial data scraping (company mode only) ──
+  // Grab annual reports, Goodinfo pages, HKEX filings BEFORE question-based search
+  let directFinancialSources = [];
+  if (planMeta.research_mode === 'company') {
+    logger.step('COLLECTOR', '直接抓取官方財務資料（年報、港交所、Goodinfo）...');
+    directFinancialSources = await scrapeDirectFinancialURLs(
+      plan.company_name || plan.topic,
+      plan.ticker || '',
+      planMeta.market
+    );
+  }
+
   const results = [];
 
   const BATCH_SIZE = 3;
@@ -240,6 +314,21 @@ export async function runCollector(plan, options = {}) {
     const batchResults = await Promise.all(
       batch.map(q => collectForQuestion(q, maxSources, planMeta))
     );
+    // Inject direct financial sources into each question's results
+    // so every analyzer call has access to core financial data
+    for (const r of batchResults) {
+      for (const ds of directFinancialSources) {
+        if (!r.sources.some(s => s.url === ds.url)) {
+          r.sources.push({
+            url: ds.url,
+            title: ds.title || '',
+            content: (ds.markdown || '').slice(0, MAX_CONTENT_CHARS),
+            fetched_at: new Date().toISOString(),
+            domain: (() => { try { return new URL(ds.url).hostname; } catch { return ''; } })(),
+          });
+        }
+      }
+    }
     results.push(...batchResults);
     if (i + BATCH_SIZE < questions.length) {
       await new Promise(r => setTimeout(r, 1500));
