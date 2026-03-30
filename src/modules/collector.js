@@ -84,64 +84,107 @@ async function scrapeFirecrawl(url) {
 }
 
 /**
- * Direct scrape known financial data URLs for a company.
- * Returns array of { url, title, markdown } objects.
+ * Build direct URLs for known financial data pages.
+ * These are real pages with structured financial data, not search queries.
  */
-async function scrapeDirectFinancialURLs(companyName, ticker, market) {
-  const targets = [];
+function buildDirectFinancialURLs(companyName, ticker, market) {
+  const urls = [];
 
   if (market === 'hk' || market === 'general') {
-    // HKEX news: search for company filings (annual reports, interim reports)
-    targets.push({
-      url: `https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=ZH`,
-      searchQuery: `${companyName} site:hkexnews.hk 年報 OR 業績`,
-    });
-    // Try company name on major HK financial portals
-    targets.push({ searchQuery: `${companyName} 年報 2024 2025 業績 site:aastocks.com` });
-    targets.push({ searchQuery: `${companyName} annual report revenue profit` });
-    targets.push({ searchQuery: `"${companyName}" 營收 利潤 2024` });
+    // Extract HK stock code: "0148.HK" → "00148", "148" → "00148"
+    let hkCode = ticker?.replace(/\.HK$/i, '') || '';
+    if (hkCode && hkCode.length < 5) hkCode = hkCode.padStart(5, '0');
+
+    if (hkCode) {
+      // AAStocks: company fundamental page (has revenue, profit, margins)
+      urls.push({
+        url: `http://www.aastocks.com/tc/stocks/analysis/company-fundamental/?symbol=${hkCode}`,
+        title: `${companyName} AAStocks 基本面分析`,
+      });
+      // Yahoo Finance: financials page
+      urls.push({
+        url: `https://finance.yahoo.com/quote/${hkCode.replace(/^0+/, '')}.HK/financials/`,
+        title: `${companyName} Yahoo Finance 財務數據`,
+      });
+      // Yahoo Finance: profile (company info, sector, employees)
+      urls.push({
+        url: `https://finance.yahoo.com/quote/${hkCode.replace(/^0+/, '')}.HK/profile/`,
+        title: `${companyName} Yahoo Finance 公司概況`,
+      });
+      // etnet: stock quote page
+      urls.push({
+        url: `https://www.etnet.com.hk/www/tc/stocks/realtime/quote.php?code=${parseInt(hkCode)}`,
+        title: `${companyName} etnet 即時報價`,
+      });
+    }
   }
 
   if (market === 'tw') {
-    // Goodinfo direct URL if ticker is known (e.g. "2912.TW" → "2912")
-    const stockId = ticker?.replace(/\.TW$/i, '');
-    if (stockId) {
-      targets.push({
-        url: `https://goodinfo.tw/tw/StockFinDetail.asp?STOCK_ID=${stockId}`,
+    // Extract TW stock code: "2912.TW" → "2912"
+    const twCode = ticker?.replace(/\.TW$/i, '') || '';
+    if (twCode) {
+      // Goodinfo: financial detail (income statement)
+      urls.push({
+        url: `https://goodinfo.tw/tw/StockFinDetail.asp?STOCK_ID=${twCode}`,
         title: `${companyName} Goodinfo 財務資料`,
       });
-      targets.push({
-        url: `https://goodinfo.tw/tw/StockAssetsStatus.asp?STOCK_ID=${stockId}`,
+      // Goodinfo: assets status (balance sheet)
+      urls.push({
+        url: `https://goodinfo.tw/tw/StockAssetsStatus.asp?STOCK_ID=${twCode}`,
         title: `${companyName} Goodinfo 資產負債`,
       });
+      // Goodinfo: dividend policy
+      urls.push({
+        url: `https://goodinfo.tw/tw/StockDividendPolicy.asp?STOCK_ID=${twCode}`,
+        title: `${companyName} Goodinfo 股利政策`,
+      });
     }
-    targets.push({ searchQuery: `${companyName} 年報 營收 2024 2025 site:mops.twse.com.tw` });
   }
 
+  return urls;
+}
+
+/**
+ * Direct scrape known financial data URLs + targeted searches for a company.
+ * Returns array of { url, title, markdown } objects.
+ */
+async function scrapeDirectFinancialURLs(companyName, ticker, market) {
+  const directURLs = buildDirectFinancialURLs(companyName, ticker, market);
   const results = [];
 
-  for (const target of targets) {
-    if (results.length >= 4) break;
-
-    if (target.url) {
-      // Direct scrape
-      logger.info('COLLECTOR', `直接抓取: ${target.url}`);
-      const content = await scrapeFirecrawl(target.url);
-      if (content && content.length > 200) {
-        results.push({
-          url: target.url,
-          title: target.title || target.url,
-          markdown: content,
-        });
-      }
-    } else if (target.searchQuery) {
-      // Search-based targeting
-      const searchResults = await searchFirecrawl(target.searchQuery, 2);
-      results.push(...searchResults);
+  // Phase 1: Scrape known URLs in parallel (max 4 at a time)
+  if (directURLs.length > 0) {
+    logger.step('COLLECTOR', `直接抓取 ${directURLs.length} 個財務數據頁面...`);
+    const BATCH = 4;
+    for (let i = 0; i < directURLs.length; i += BATCH) {
+      const batch = directURLs.slice(i, i + BATCH);
+      const scraped = await Promise.all(batch.map(async ({ url, title }) => {
+        logger.info('COLLECTOR', `  抓取: ${url}`);
+        const content = await scrapeFirecrawl(url);
+        if (content && content.length > 200) {
+          return { url, title, markdown: content };
+        }
+        logger.warn('COLLECTOR', `  失敗或內容不足: ${url}`);
+        return null;
+      }));
+      results.push(...scraped.filter(Boolean));
     }
   }
 
-  logger.info('COLLECTOR', `直接抓取財務資料：取得 ${results.length} 個來源`);
+  // Phase 2: Targeted search for annual reports and financial news
+  const searchQueries = [
+    `"${companyName}" 2024 年報 業績 營收`,
+    `"${companyName}" annual results 2024 revenue profit`,
+  ];
+
+  for (const q of searchQueries) {
+    if (results.length >= 6) break;
+    logger.info('COLLECTOR', `  搜尋: ${q}`);
+    const searchResults = await searchFirecrawl(q, 3);
+    results.push(...searchResults);
+  }
+
+  logger.info('COLLECTOR', `直接抓取財務資料：共取得 ${results.length} 個來源`);
   return results;
 }
 
