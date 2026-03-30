@@ -74,6 +74,18 @@ function mergeSources(original, additional) {
 export async function runGapFill(plan, rawSources, analysis, options = {}) {
   const tmpDir = options.tmpDir;
 
+  try {
+    return await _runGapFillInternal(plan, rawSources, analysis, options);
+  } catch (err) {
+    // Gap-fill is enhancement, not critical — don't let it kill the pipeline
+    logger.warn('GAP-FILL', `缺口補充失敗（${err.message}），使用第一輪結果繼續`);
+    return { mergedSources: rawSources, finalAnalysis: analysis };
+  }
+}
+
+async function _runGapFillInternal(plan, rawSources, analysis, options) {
+  const tmpDir = options.tmpDir;
+
   // Step 1: Extract gaps
   const gaps = extractGaps(analysis);
   logger.step('GAP-FILL', `第一輪分析發現 ${gaps.length} 個資料缺口`);

@@ -63,26 +63,32 @@ function cleanUnverifiedClaims(content, claims) {
  */
 async function verifySection(section, analysis, rawSources) {
   if (!section.content || section.content.length < 50) {
-    return { section, verification: null };
+    return { claims: [], summary: { total_claims: 0, verified: 0, unverified: 0, conflicting: 0 } };
   }
 
   const { dataPoints, sourceSnippets } = gatherContext(section, analysis, rawSources);
 
-  const result = await callClaudeJSON(
-    VERIFIER_SYSTEM,
-    buildVerifierPrompt(section, dataPoints, sourceSnippets),
-    { maxTokens: 4096 }
-  );
+  try {
+    const result = await callClaudeJSON(
+      VERIFIER_SYSTEM,
+      buildVerifierPrompt(section, dataPoints, sourceSnippets),
+      { maxTokens: 4096 }
+    );
 
-  const claims = result.claims || [];
-  const summary = result.summary || {
-    total_claims: claims.length,
-    verified: claims.filter(c => c.status === 'verified').length,
-    unverified: claims.filter(c => c.status === 'unverified').length,
-    conflicting: claims.filter(c => c.status === 'conflicting').length,
-  };
+    const claims = result.claims || [];
+    const summary = result.summary || {
+      total_claims: claims.length,
+      verified: claims.filter(c => c.status === 'verified').length,
+      unverified: claims.filter(c => c.status === 'unverified').length,
+      conflicting: claims.filter(c => c.status === 'conflicting').length,
+    };
 
-  return { claims, summary };
+    return { claims, summary };
+  } catch (err) {
+    // Don't let a single section's verification failure kill the whole pipeline
+    logger.warn('VERIFIER', `  ${section.title} 驗證失敗（${err.message}），跳過此章節`);
+    return { claims: [], summary: { total_claims: 0, verified: 0, unverified: 0, conflicting: 0 } };
+  }
 }
 
 /**
