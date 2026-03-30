@@ -109,6 +109,16 @@ async function searchExa(query, numResults = 5) {
 }
 
 /**
+ * Add recency suffix to search queries.
+ * Ensures we don't get stale 2022-era articles when it's 2026.
+ */
+function addRecencySuffix(query) {
+  // If query already has a year, don't add
+  if (/202[4-9]/.test(query)) return query;
+  return `${query} 2025 2026`;
+}
+
+/**
  * 處理單一子問題
  * @param {object} question - sub_question from planner
  * @param {number} maxSources - max sources per question
@@ -119,17 +129,17 @@ async function collectForQuestion(question, maxSources, planMeta = {}) {
   const isCompany = planMeta.research_mode === 'company';
   const market = planMeta.market || 'general';
 
-  // 中文搜尋為主，英文補充
-  const queries = [kw.zh, kw.en].filter(Boolean);
-  logger.step('COLLECTOR', `[${question.id}] 搜尋：${kw.zh}${isCompany ? ` (企業研究/${market})` : ''}`);
+  // 中文搜尋為主，英文補充 — 加年份確保時效性
+  const queries = [kw.zh, kw.en].filter(Boolean).map(addRecencySuffix);
+  logger.step('COLLECTOR', `[${question.id}] 搜尋：${queries[0]}${isCompany ? ` (企業研究/${market})` : ''}`);
 
   let allResults = [];
 
   if (isCompany) {
     // ── Company mode: two-pass search ──
-    // Pass 1: site-scoped search for structured financial data
+    // Pass 1: site-scoped search for structured financial data (with recency)
     const siteSuffix = buildSiteSuffix(market);
-    const scopedQuery = `${kw.zh} ${siteSuffix}`;
+    const scopedQuery = addRecencySuffix(`${kw.zh} ${siteSuffix}`);
     logger.info('COLLECTOR', `[${question.id}] 目標網站搜尋: ${scopedQuery.slice(0, 80)}...`);
     const scopedResults = await searchFirecrawl(scopedQuery, 3);
     allResults.push(...scopedResults);
@@ -141,7 +151,7 @@ async function collectForQuestion(question, maxSources, planMeta = {}) {
       allResults.push(...results);
     }
   } else {
-    // ── Market mode: original behavior ──
+    // ── Market mode: original behavior (with recency) ──
     for (const q of queries) {
       if (allResults.length >= 6) break;
       const results = await searchFirecrawl(q, 4);
