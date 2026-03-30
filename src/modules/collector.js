@@ -62,25 +62,89 @@ async function searchFirecrawl(query, limit = 5) {
 }
 
 /**
- * Firecrawl 深度抓取單一頁面
+ * Free axios-based scrape: direct HTTP GET → strip HTML to text.
+ * No JS rendering, but works for many financial sites and is free.
  */
-async function scrapeFirecrawl(url) {
-  if (!config.firecrawl.apiKey) return null;
+async function scrapeFree(url) {
   try {
-    const res = await axios.post(
-      `${config.firecrawl.baseUrl}/scrape`,
-      { url, formats: ['markdown'], onlyMainContent: true },
-      {
-        headers: { Authorization: `Bearer ${config.firecrawl.apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 25000,
-      }
-    );
-    const content = res.data?.data?.markdown || res.data?.markdown || '';
-    return content.slice(0, MAX_CONTENT_CHARS);
+    const res = await axios.get(url, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+      },
+      maxRedirects: 3,
+    });
+    const html = res.data;
+    if (typeof html !== 'string') return null;
+
+    // Strip HTML tags, scripts, styles → plain text
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#\d+;/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return text.length > 100 ? text.slice(0, MAX_CONTENT_CHARS) : null;
   } catch (err) {
-    logger.warn('COLLECTOR', `Firecrawl 抓取失敗 (${url})：${err.message}`);
+    logger.warn('COLLECTOR', `免費抓取失敗 (${url})：${err.message}`);
     return null;
   }
+}
+
+/**
+ * Firecrawl 深度抓取單一頁面, with free fallback.
+ */
+async function scrapeFirecrawl(url) {
+  // Try Firecrawl first
+  if (config.firecrawl.apiKey) {
+    try {
+      const res = await axios.post(
+        `${config.firecrawl.baseUrl}/scrape`,
+        { url, formats: ['markdown'], onlyMainContent: true },
+        {
+          headers: { Authorization: `Bearer ${config.firecrawl.apiKey}`, 'Content-Type': 'application/json' },
+          timeout: 25000,
+        }
+      );
+      const content = res.data?.data?.markdown || res.data?.markdown || '';
+      if (content.length > 100) return content.slice(0, MAX_CONTENT_CHARS);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message;
+      // If credits exhausted, log once and fall through to free scrape
+      if (msg.includes('Insufficient credits')) {
+        logger.warn('COLLECTOR', `Firecrawl credits 用完，切換免費抓取`);
+      } else {
+        logger.warn('COLLECTOR', `Firecrawl 抓取失敗 (${url})：${msg}`);
+      }
+    }
+  }
+
+  // Fallback: free axios scrape
+  logger.info('COLLECTOR', `使用免費抓取: ${url}`);
+  return scrapeFree(url);
+}
+
+/**
+ * Firecrawl search with Exa fallback.
+ * If Firecrawl fails (credits, network), automatically tries Exa.
+ */
+async function searchWithFallback(query, limit = 5) {
+  // Try Firecrawl first
+  const fcResults = await searchFirecrawl(query, limit);
+  if (fcResults.length > 0) return fcResults;
+
+  // Fallback to Exa
+  logger.info('COLLECTOR', `Firecrawl 搜尋無結果，Exa 備援: ${query.slice(0, 50)}...`);
+  return searchExa(query, limit);
 }
 
 /**
@@ -180,7 +244,7 @@ async function scrapeDirectFinancialURLs(companyName, ticker, market) {
   for (const q of searchQueries) {
     if (results.length >= 6) break;
     logger.info('COLLECTOR', `  搜尋: ${q}`);
-    const searchResults = await searchFirecrawl(q, 3);
+    const searchResults = await searchWithFallback(q, 3);
     results.push(...searchResults);
   }
 
@@ -237,36 +301,32 @@ async function collectForQuestion(question, maxSources, planMeta = {}) {
     // Pass 1: site-scoped search (e.g. goodinfo + 建滔集團 營收)
     const scopedQuery = `${kw.zh} ${siteSuffix}`;
     logger.info('COLLECTOR', `[${question.id}] Pass 1 目標網站: ${scopedQuery.slice(0, 80)}...`);
-    const scopedResults = await searchFirecrawl(scopedQuery, 3);
+    const scopedResults = await searchWithFallback(scopedQuery, 3);
     allResults.push(...scopedResults);
 
     // Pass 2: general Chinese search
     if (allResults.length < 6) {
       logger.info('COLLECTOR', `[${question.id}] Pass 2 一般搜尋: ${kw.zh}`);
-      const zhResults = await searchFirecrawl(kw.zh, 4);
+      const zhResults = await searchWithFallback(kw.zh, 4);
       allResults.push(...zhResults);
     }
 
     // Pass 3: English search for broader coverage
     if (allResults.length < 6 && kw.en) {
       logger.info('COLLECTOR', `[${question.id}] Pass 3 英文搜尋: ${kw.en}`);
-      const enResults = await searchFirecrawl(kw.en, 3);
+      const enResults = await searchWithFallback(kw.en, 3);
       allResults.push(...enResults);
     }
   } else {
     // ── Market mode ──
     for (const q of queries) {
       if (allResults.length >= 6) break;
-      const results = await searchFirecrawl(q, 4);
+      const results = await searchWithFallback(q, 4);
       allResults.push(...results);
     }
   }
 
-  // Firecrawl 無結果時用 Exa 備援
-  if (allResults.length === 0) {
-    logger.warn('COLLECTOR', `[${question.id}] Firecrawl 無結果，嘗試 Exa 備援`);
-    allResults = await searchExa(queries[0], 5);
-  }
+  // searchWithFallback already tries Exa, no need for separate fallback
 
   const sources = [];
   const seenDomains = new Set();
