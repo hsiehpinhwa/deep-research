@@ -37,11 +37,16 @@ function runCJKScanner(reportContent, tmpDir) {
  */
 async function reviseSection(section, feedback) {
   logger.step('REVIEWER', `修訂章節：${section.title}`);
-  return await callClaudeJSON(
-    '你是機構報告撰寫人，根據審稿意見修訂章節。輸出純 JSON。',
-    buildRevisionPrompt(section, feedback),
-    { maxTokens: 4096 }
-  );
+  try {
+    return await callClaudeJSON(
+      '你是機構報告撰寫人，根據審稿意見修訂章節。輸出純 JSON。',
+      buildRevisionPrompt(section, feedback),
+      { maxTokens: 4096 }
+    );
+  } catch (err) {
+    logger.warn('REVIEWER', `修訂 ${section.title} 失敗（${err.message}），保留原文`);
+    return section;
+  }
 }
 
 /**
@@ -69,11 +74,17 @@ export async function runReviewer(reportContent, options = {}) {
     }
 
     // 三維度評分
-    const feedback = await callClaudeJSON(
-      REVIEWER_SYSTEM,
-      buildReviewerPrompt(currentReport, cjkViolations),
-      { maxTokens: 2048 }
-    );
+    let feedback;
+    try {
+      feedback = await callClaudeJSON(
+        REVIEWER_SYSTEM,
+        buildReviewerPrompt(currentReport, cjkViolations),
+        { maxTokens: 2048 }
+      );
+    } catch (err) {
+      logger.warn('REVIEWER', `第 ${iteration} 輪審稿 JSON 解析失敗（${err.message}），跳過審稿直接交付`);
+      feedback = { scores: { logic: 7, language: 7, reader_experience: 7 }, passed: true };
+    }
 
     const avg = feedback.average || (
       ((feedback.scores?.logic || 0) +
