@@ -95,6 +95,81 @@ def add_run(para, text, bold=False, size=None, color=None, italic=False):
     return run
 
 
+# ── Table of Contents ────────────────────────────
+
+def build_toc(doc, sections, summary_exists=True):
+    """生成靜態目錄頁"""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(8)
+    p.paragraph_format.space_after  = Pt(20)
+    add_run(p, '目　錄', bold=True, size=22, color=NEXI_BLUE)
+
+    items = []
+    if summary_exists:
+        items.append(('主管摘要', 0))
+    for sec in sections:
+        items.append((sec.get('title', ''), 0))
+    items.append(('研究限制與風險提示', 0))
+    items.append(('附錄：參考資料來源', 0))
+
+    for title, _ in items:
+        tp = doc.add_paragraph()
+        tp.paragraph_format.space_after = Pt(6)
+        tp.paragraph_format.left_indent = Cm(0.5)
+        add_run(tp, '▸  ', color=TEAL, size=11)
+        add_run(tp, title, size=11, color=CHARCOAL)
+
+    # 裝飾底線
+    lp = doc.add_paragraph()
+    lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    lp.paragraph_format.space_before = Pt(16)
+    lr = lp.add_run('─' * 40)
+    lr.font.size = Pt(9)
+    lr.font.color.rgb = RGBColor(0xCC, 0xCC, 0xDD)
+
+    doc.add_page_break()
+
+
+# ── Data Table ───────────────────────────────────
+
+def build_data_table(doc, table_data):
+    """渲染 JSON 表格為 Word 表格（深藍表頭、斑馬紋列）"""
+    headers = table_data.get('headers', [])
+    rows = table_data.get('rows', [])
+    if not headers or not rows:
+        return
+
+    n_cols = len(headers)
+    table = doc.add_table(rows=1 + len(rows), cols=n_cols)
+    table.autofit = True
+
+    # 表頭
+    for i, h in enumerate(headers):
+        cell = table.rows[0].cells[i]
+        set_cell_bg(cell, NEXI_BLUE)
+        set_cell_margins(cell, top=60, bottom=60, left=120, right=120)
+        cell.paragraphs[0].clear()
+        p = cell.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
+        add_run(p, str(h), bold=True, size=9, color=WHITE)
+
+    # 資料列
+    zebra = RGBColor(0xF5, 0xF8, 0xFC)
+    for r_idx, row_data in enumerate(rows):
+        for c_idx in range(n_cols):
+            cell = table.rows[r_idx + 1].cells[c_idx]
+            if r_idx % 2 == 1:
+                set_cell_bg(cell, zebra)
+            set_cell_margins(cell, top=40, bottom=40, left=120, right=120)
+            cell.paragraphs[0].clear()
+            val = row_data[c_idx] if c_idx < len(row_data) else ''
+            p = cell.add_paragraph()
+            p.paragraph_format.space_after = Pt(0)
+            add_run(p, str(val), size=9, color=CHARCOAL)
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+
+
 # ── Cover Page ────────────────────────────────────
 
 def build_cover_page(doc, meta):
@@ -275,6 +350,11 @@ def build_section(doc, section):
         p.paragraph_format.first_line_indent = Pt(22)
         add_run(p, para_text, size=11, color=CHARCOAL)
 
+    # 資料表格（由 Reporter 生成的 [TABLE_JSON] 解析而來）
+    tables = section.get('tables', [])
+    for tbl_data in tables:
+        build_data_table(doc, tbl_data)
+
     # 關鍵數據框
     key_data = [d for d in section.get('key_data', []) if d and d.strip()]
     if key_data:
@@ -373,8 +453,24 @@ def build_sources_appendix(doc, sources):
 
 # ── Header / Footer ───────────────────────────────
 
+def add_page_number(paragraph):
+    """在段落中插入 Word 自動頁碼 field code"""
+    run = paragraph.add_run()
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    run._r.append(fldChar1)
+
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = ' PAGE '
+    run._r.append(instrText)
+
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'end')
+    run._r.append(fldChar2)
+
+
 def add_header_footer(doc, title):
-    # 截斷標題供頁首使用
     short_title = title if len(title) <= 30 else title[:28] + '…'
     for sec in doc.sections:
         # 頁首
@@ -385,19 +481,17 @@ def add_header_footer(doc, title):
         hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         add_run(hp, f'Dolphin.Ai  |  {short_title}', size=8, color=LIGHT_GREY)
 
-        # 頁尾
+        # 頁尾 — 含自動頁碼
         footer = sec.footer
         footer.is_linked_to_previous = False
-
-        # 左：機密標示
         if not footer.paragraphs:
             footer.add_paragraph()
         fp = footer.paragraphs[0]
         fp.clear()
-
-        # 使用 tab 分左中右
         fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        add_run(fp, '本報告由 Dolphin.Ai 輔助生成  ·  僅供參考，請自行核實資料', size=8, color=LIGHT_GREY)
+        add_run(fp, '本報告由 Dolphin.Ai 輔助生成  ·  僅供參考  ·  第 ', size=8, color=LIGHT_GREY)
+        add_page_number(fp)
+        add_run(fp, ' 頁', size=8, color=LIGHT_GREY)
 
 
 # ── Main ──────────────────────────────────────────
@@ -418,8 +512,12 @@ def generate_report(report_content: dict, output_path: str):
     # 封面
     build_cover_page(doc, meta)
 
-    # 主管摘要
+    # 目錄頁
+    sections_list = report_content.get('sections', [])
     summary = report_content.get('executive_summary', {})
+    build_toc(doc, sections_list, summary_exists=bool(summary))
+
+    # 主管摘要
     if summary:
         build_executive_summary(doc, summary)
 

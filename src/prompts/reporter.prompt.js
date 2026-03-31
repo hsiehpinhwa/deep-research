@@ -104,7 +104,7 @@ ${analysisText}
 /**
  * 章節正文模式：生成單一章節的完整正文
  */
-export const buildSectionPrompt = (sectionDef, plan, analysis) => {
+export const buildSectionPrompt = (sectionDef, plan, analysis, previousClaims = []) => {
   const isCompany = plan.research_mode === 'company';
 
   // 找到與此章節相關的分析 — 嚴格只取 linked 的子問題
@@ -170,5 +170,14 @@ ${companyWritingGuide}
 1. 使用分析框架做定性推演（如波特五力、PEST、SWOT、價值鏈分析）
 2. 從產業邏輯和商業常識出發，推導合理的趨勢判斷
 3. 在段落開頭明確標注「基於產業邏輯的定性分析」，與有來源的數據區隔
-4. 提出「後續需補充驗證的關鍵問題」作為研究建議`;
+4. 提出「後續需補充驗證的關鍵問題」作為研究建議
+
+## 表格輸出
+若本章節涉及 3 個以上可比較的數字（如多年營收、多家公司市佔率），在正文之後另起一行輸出表格：
+格式：[TABLE_JSON]{"headers":["年度","營收(億)","毛利率"],"rows":[["2023","397","19%"],["2024","450","22%"]]}[/TABLE_JSON]
+只有在數據確實來自來源時才輸出表格，不可為了輸出表格而編造數據。${previousClaims.length > 0 ? `
+
+## ⚠️ 去重：以下數據已在前面章節完整引用，本章不可重複
+${previousClaims.slice(0, 20).map(c => `- ${c}`).join('\n')}
+如需提及，僅用簡要回指（如「如前述，營收大幅成長」），不可再次列出具體數字。` : ''}`;
 };

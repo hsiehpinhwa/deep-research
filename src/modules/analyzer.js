@@ -67,10 +67,14 @@ export async function runAnalyzer(rawSources, options = {}) {
 
   const results = [];
 
-  // 逐一處理（分析較耗 token，不平行以控制成本）
-  for (const questionData of rawSources) {
-    const analysis = await analyzeQuestion(questionData, systemPrompt);
-    results.push(analysis);
+  // 批次並行（每次 3 個 Claude call，加速分析階段）
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < rawSources.length; i += BATCH_SIZE) {
+    const batch = rawSources.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(qd => analyzeQuestion(qd, systemPrompt))
+    );
+    results.push(...batchResults);
   }
 
   const path = saveTmp(cacheKey, results, tmpDir);

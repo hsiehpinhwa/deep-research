@@ -38,20 +38,63 @@ async function generateReportSkeleton(plan, analysis) {
 }
 
 /**
- * 生成單一章節正文
+ * Extract key data claims from section text for dedup tracking.
+ * Looks for patterns like numbers with units, percentages, currency amounts.
  */
-async function generateSection(sectionDef, plan, analysis) {
+function extractClaimsFromText(text) {
+  const claims = [];
+  // Match numbers with units: "494億", "25%", "USD 249億", "1,500萬", etc.
+  const patterns = [
+    /[\d,]+\.?\d*\s*[億萬千百][\w元幣]*(?:\s*[\(（][^)）]*[\)）])?/g,
+    /\d+\.?\d*\s*%/g,
+    /(?:USD|HKD|NTD|TWD|RMB|港幣|美元|新台幣)\s*[\d,]+\.?\d*\s*[億萬千百]?/g,
+    /CAGR\s*[\d.]+%/g,
+    /(?:年增|成長|下滑|衰退)\s*[\d.]+%/g,
+  ];
+  for (const pat of patterns) {
+    const matches = text.match(pat);
+    if (matches) claims.push(...matches);
+  }
+  return [...new Set(claims)]; // deduplicate
+}
+
+/**
+ * Parse TABLE_JSON markers from section content.
+ * Returns { cleanContent, tables[] }
+ */
+function parseTablesFromContent(text) {
+  const tables = [];
+  const cleanContent = text.replace(
+    /\[TABLE_JSON\]([\s\S]*?)\[\/TABLE_JSON\]/g,
+    (_, json) => {
+      try {
+        const table = JSON.parse(json.trim());
+        if (table.headers && table.rows) tables.push(table);
+      } catch { /* ignore malformed */ }
+      return ''; // remove from text
+    }
+  ).trim();
+  return { cleanContent, tables };
+}
+
+/**
+ * 生成單一章節正文
+ * @param {Array<string>} previousClaims - data claims used in earlier sections (for dedup)
+ */
+async function generateSection(sectionDef, plan, analysis, previousClaims = []) {
   const text = await callClaude(
     REPORTER_SYSTEM,
-    buildSectionPrompt(sectionDef, plan, analysis),
+    buildSectionPrompt(sectionDef, plan, analysis, previousClaims),
     { maxTokens: 8192 }
   );
 
-  // 純文字輸出，不是 JSON
+  const { cleanContent, tables } = parseTablesFromContent(text.trim());
+
   return {
     id: sectionDef.id,
     title: sectionDef.title,
-    content: text.trim(),
+    content: cleanContent,
+    tables,
     key_data: sectionDef.key_data || [],
     linked_questions: sectionDef.linked_questions || [],
   };
@@ -88,10 +131,16 @@ export async function runReporter(plan, analysis, rawSources, options = {}) {
   logger.step('REPORTER', `逐章節生成正文（共 ${sections.length} 個章節）...`);
 
   const fullSections = [];
+  const allPreviousClaims = []; // cumulative dedup tracker
+
   for (const sectionDef of sections) {
-    logger.step('REPORTER', `  生成：${sectionDef.title}`);
-    const fullSection = await generateSection(sectionDef, plan, analysis);
+    logger.step('REPORTER', `  生成：${sectionDef.title}（已用 ${allPreviousClaims.length} 個數據點）`);
+    const fullSection = await generateSection(sectionDef, plan, analysis, allPreviousClaims);
     fullSections.push(fullSection);
+
+    // Extract claims from this section and add to tracker
+    const newClaims = extractClaimsFromText(fullSection.content);
+    allPreviousClaims.push(...newClaims);
   }
 
   // Step 3：組裝完整報告

@@ -85,11 +85,25 @@ async function searchGoogle(query, limit = 5) {
       },
       timeout: 10000,
     });
-    return (res.data.items || []).map(item => ({
-      url: item.link,
-      title: item.title,
-      markdown: item.snippet || '',
-    }));
+    const items = res.data.items || [];
+
+    // Google CSE only returns snippets (~200 chars). Auto-scrape top results for full content.
+    const results = [];
+    for (const item of items.slice(0, Math.min(limit, 5))) {
+      let content = item.snippet || '';
+
+      // Try to scrape full page content (free, no Firecrawl credits)
+      if (content.length < 500) {
+        const fullContent = await scrapeFree(item.link);
+        if (fullContent && fullContent.length > content.length) {
+          content = fullContent;
+          logger.info('COLLECTOR', `  Google CSE 補抓成功: ${item.link.slice(0, 60)}... (${fullContent.length} chars)`);
+        }
+      }
+
+      results.push({ url: item.link, title: item.title, markdown: content });
+    }
+    return results;
   } catch (err) {
     logger.warn('COLLECTOR', `Google CSE 搜尋失敗：${err.response?.status} ${err.message}`);
     return [];
