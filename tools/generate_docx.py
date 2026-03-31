@@ -341,9 +341,13 @@ def build_section(doc, section):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
-    # 正文
+    # 正文：優先按雙換行（段落）切分，fallback 單換行
     content = section.get('content', '')
-    paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+    raw_blocks = [b.strip() for b in content.split('\n\n') if b.strip()]
+    if len(raw_blocks) <= 1:
+        # Claude 可能只用單換行，或根本沒換行 — 嘗試單換行切分
+        raw_blocks = [b.strip() for b in content.split('\n') if b.strip()]
+    paragraphs = raw_blocks
     for para_text in paragraphs:
         p = doc.add_paragraph()
         p.paragraph_format.space_after       = Pt(8)
