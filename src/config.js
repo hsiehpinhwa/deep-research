@@ -28,6 +28,10 @@ export default {
     apiKey: process.env.EXA_API_KEY || '',
     baseUrl: 'https://api.exa.ai',
   },
+  google: {
+    cseApiKey: process.env.GOOGLE_CSE_API_KEY || '',
+    cseCx: process.env.GOOGLE_CSE_CX || '',
+  },
   pipeline: {
     maxSourcesPerQuestion: parseInt(process.env.MAX_SOURCES_PER_QUESTION || '3'),
     maxReviewIterations: parseInt(process.env.MAX_REVIEW_ITERATIONS || '2'),

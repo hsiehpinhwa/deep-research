@@ -3,7 +3,10 @@ import { saveTmp, loadTmp } from '../utils/fileUtils.js';
 import { logger } from '../utils/logger.js';
 import config from '../config.js';
 
-const MAX_CONTENT_CHARS = 6000;
+const MAX_CONTENT_CHARS = 10000;
+
+// ── Firecrawl exhaustion flag (module-level, persists across calls within same job) ──
+let firecrawlExhausted = false;
 
 // ── Company research: targeted financial sites by market ──
 
@@ -44,7 +47,7 @@ function buildSiteSuffix(market) {
  * Firecrawl 搜尋（主要搜尋引擎）
  */
 async function searchFirecrawl(query, limit = 5) {
-  if (!config.firecrawl.apiKey) return [];
+  if (!config.firecrawl.apiKey || firecrawlExhausted) return [];
   try {
     const res = await axios.post(
       `${config.firecrawl.baseUrl}/search`,
@@ -56,7 +59,39 @@ async function searchFirecrawl(query, limit = 5) {
     );
     return res.data.data || [];
   } catch (err) {
-    logger.warn('COLLECTOR', `Firecrawl 搜尋失敗：${err.response?.status} ${err.message}`);
+    const msg = err.response?.data?.error || err.message;
+    if (String(msg).includes('Insufficient credits') || String(msg).includes('insufficient')) {
+      firecrawlExhausted = true;
+      logger.warn('COLLECTOR', 'Firecrawl credits 用完，本次 job 後續全部跳過 Firecrawl');
+    } else {
+      logger.warn('COLLECTOR', `Firecrawl 搜尋失敗：${err.response?.status} ${msg}`);
+    }
+    return [];
+  }
+}
+
+/**
+ * Google Custom Search API（免費 100 次/天）
+ */
+async function searchGoogle(query, limit = 5) {
+  if (!config.google?.cseApiKey || !config.google?.cseCx) return [];
+  try {
+    const res = await axios.get('https://www.googleapis.com/customsearch/v1', {
+      params: {
+        key: config.google.cseApiKey,
+        cx: config.google.cseCx,
+        q: query,
+        num: Math.min(limit, 10),
+      },
+      timeout: 10000,
+    });
+    return (res.data.items || []).map(item => ({
+      url: item.link,
+      title: item.title,
+      markdown: item.snippet || '',
+    }));
+  } catch (err) {
+    logger.warn('COLLECTOR', `Google CSE 搜尋失敗：${err.response?.status} ${err.message}`);
     return [];
   }
 }
@@ -104,8 +139,8 @@ async function scrapeFree(url) {
  * Firecrawl 深度抓取單一頁面, with free fallback.
  */
 async function scrapeFirecrawl(url) {
-  // Try Firecrawl first
-  if (config.firecrawl.apiKey) {
+  // Try Firecrawl first (skip entirely if credits exhausted)
+  if (config.firecrawl.apiKey && !firecrawlExhausted) {
     try {
       const res = await axios.post(
         `${config.firecrawl.baseUrl}/scrape`,
@@ -118,10 +153,10 @@ async function scrapeFirecrawl(url) {
       const content = res.data?.data?.markdown || res.data?.markdown || '';
       if (content.length > 100) return content.slice(0, MAX_CONTENT_CHARS);
     } catch (err) {
-      const msg = err.response?.data?.error || err.message;
-      // If credits exhausted, log once and fall through to free scrape
-      if (msg.includes('Insufficient credits')) {
-        logger.warn('COLLECTOR', `Firecrawl credits 用完，切換免費抓取`);
+      const msg = String(err.response?.data?.error || err.message);
+      if (msg.includes('Insufficient credits') || msg.includes('insufficient')) {
+        firecrawlExhausted = true;
+        logger.warn('COLLECTOR', 'Firecrawl credits 用完，本次 job 後續全部跳過');
       } else {
         logger.warn('COLLECTOR', `Firecrawl 抓取失敗 (${url})：${msg}`);
       }
@@ -134,16 +169,20 @@ async function scrapeFirecrawl(url) {
 }
 
 /**
- * Firecrawl search with Exa fallback.
- * If Firecrawl fails (credits, network), automatically tries Exa.
+ * Three-tier search fallback: Firecrawl → Google CSE → Exa
  */
 async function searchWithFallback(query, limit = 5) {
-  // Try Firecrawl first
+  // Tier 1: Firecrawl (paid, best quality)
   const fcResults = await searchFirecrawl(query, limit);
   if (fcResults.length > 0) return fcResults;
 
-  // Fallback to Exa
-  logger.info('COLLECTOR', `Firecrawl 搜尋無結果，Exa 備援: ${query.slice(0, 50)}...`);
+  // Tier 2: Google Custom Search (free 100/day)
+  logger.info('COLLECTOR', `Firecrawl 無結果，Google CSE 備援: ${query.slice(0, 50)}...`);
+  const googleResults = await searchGoogle(query, limit);
+  if (googleResults.length > 0) return googleResults;
+
+  // Tier 3: Exa (neural search)
+  logger.info('COLLECTOR', `Google CSE 無結果，Exa 備援: ${query.slice(0, 50)}...`);
   return searchExa(query, limit);
 }
 

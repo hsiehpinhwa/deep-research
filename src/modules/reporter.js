@@ -44,7 +44,7 @@ async function generateSection(sectionDef, plan, analysis) {
   const text = await callClaude(
     REPORTER_SYSTEM,
     buildSectionPrompt(sectionDef, plan, analysis),
-    { maxTokens: 4096 }
+    { maxTokens: 8192 }
   );
 
   // 純文字輸出，不是 JSON

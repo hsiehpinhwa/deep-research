@@ -33,9 +33,9 @@ ${NO_FABRICATION_RULES}
 ## 輸出規則
 - 必須輸出純 JSON，不加任何說明文字
 - 每個字串欄位**嚴格限制在 60 字以內**（繁體中文）
-- consensus 最多 4 條，每條 ≤ 50 字
-- key_insights 最多 4 條
-- data_points 最多 6 條，每條 ≤ 40 字，**每條必須附 source_url**
+- consensus 最多 6 條，每條 ≤ 80 字
+- key_insights 最多 6 條
+- data_points 最多 10 條，每條 ≤ 80 字，**每條必須附 source_url**
 - gaps 最多 5 條 — 主動列出「來源中未涵蓋但報告需要的數據」
 
 ## 輸出格式
@@ -91,10 +91,10 @@ ${NO_FABRICATION_RULES}
 
 ## 輸出規則
 - 必須輸出純 JSON，不加任何說明文字
-- 每個字串欄位**嚴格限制在 60 字以內**（繁體中文）
-- consensus 最多 4 條，每條 ≤ 50 字
-- key_insights 最多 4 條
-- data_points 最多 6 條，每條 ≤ 40 字，**每條必須附 source_url**
+- 每個字串欄位**嚴格限制在 80 字以內**（繁體中文）
+- consensus 最多 6 條，每條 ≤ 80 字
+- key_insights 最多 6 條
+- data_points 最多 10 條，每條 ≤ 80 字，**每條必須附 source_url**
 - gaps 最多 5 條 — 主動列出「來源中未涵蓋但報告需要的財務數據」
 
 ## 輸出格式

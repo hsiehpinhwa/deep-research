@@ -110,8 +110,8 @@ export const buildSectionPrompt = (sectionDef, plan, analysis) => {
   // 找到與此章節相關的分析 — 嚴格只取 linked 的子問題
   const linked = (sectionDef.linked_questions || []);
   const relevantAnalysis = linked.length > 0
-    ? analysis.filter(a => linked.includes(a.question_id)).slice(0, 2)
-    : [analysis[0]].filter(Boolean); // fallback: only first question, not all
+    ? analysis.filter(a => linked.includes(a.question_id)).slice(0, 3)
+    : analysis.slice(0, 2); // fallback: first 2 questions for broader context
 
   // Build context — only data_points that haven't been used in previous sections
   const analysisContext = relevantAnalysis.length > 0
@@ -157,11 +157,18 @@ ${analysisContext}
 
 ## 寫作要求
 請直接輸出純文字正文（非 JSON、非 markdown）：
-- 長度：600-900 繁體中文字
-- 分為 3-4 個段落，每段 150-250 字
-- 每段開門見山提出論點，再展開分析
+- 長度：**1200-1800 繁體中文字**（這是專業研報的標準深度，不可偷懶寫短）
+- 分為 **4-6 個段落**，每段 250-350 字
+- 每段開門見山提出論點，再展開分析，最後收束
 - 使用台灣商業寫作規範，避免翻譯腔
-- 引用數據時標明年份，如「2024 年營收達 XX 億港幣」
-- 若此章節缺乏數據，聚焦在定性分析（產業邏輯、競爭態勢、策略方向），誠實標示資料限制
-- **本章節專注於「${sectionDef.title}」的獨特面向，避免與其他章節論述重疊**${companyWritingGuide}`;
+- 引用數據時標明年份與來源，如「2024 年營收達 494 億港幣（年報）」
+- **本章節專注於「${sectionDef.title}」的獨特面向，避免與其他章節論述重疊**
+${companyWritingGuide}
+
+## 無數據時的處理方式
+若上方「有來源的數據」為空或極少，不要寫出空洞的「公開資料尚未涵蓋」充數。改為：
+1. 使用分析框架做定性推演（如波特五力、PEST、SWOT、價值鏈分析）
+2. 從產業邏輯和商業常識出發，推導合理的趨勢判斷
+3. 在段落開頭明確標注「基於產業邏輯的定性分析」，與有來源的數據區隔
+4. 提出「後續需補充驗證的關鍵問題」作為研究建議`;
 };
