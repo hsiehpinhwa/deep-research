@@ -8,6 +8,17 @@ const MAX_CONTENT_CHARS = 10000;
 // ── Firecrawl exhaustion flag (module-level, persists across calls within same job) ──
 let firecrawlExhausted = false;
 
+// ── Taiwan financial media — for market research Pass 2 ──
+
+const TW_FINANCIAL_MEDIA = [
+  'ctee.com.tw',           // 工商時報
+  'money.udn.com',         // 經濟日報
+  'wealth.com.tw',         // 財訊
+  'cw.com.tw',             // 天下雜誌
+  'businessweekly.com.tw', // 商業周刊
+  'gvm.com.tw',            // 遠見雜誌
+];
+
 // ── Company research: targeted financial sites by market ──
 
 const COMPANY_SITES = {
@@ -463,10 +474,20 @@ export async function collectForQuestion(question, maxSources, planMeta = {}) {
     }
   } else {
     // ── Market mode ──
+    // Pass 1: general search (Chinese + English)
     for (const q of queries) {
       if (allResults.length >= 6) break;
       const results = await searchWithFallback(q, 4);
       allResults.push(...results);
+    }
+
+    // Pass 2: Taiwan financial media — 工商時報, 經濟日報, 天下, 商周, 遠見, 財訊
+    if (allResults.length < 8) {
+      const mediaSuffix = TW_FINANCIAL_MEDIA.slice(0, 5).map(s => `site:${s}`).join(' OR ');
+      const mediaQuery = `${kw.zh} ${mediaSuffix}`;
+      logger.info('COLLECTOR', `[${question.id}] Pass 2 台灣財經媒體: ${mediaQuery.slice(0, 80)}...`);
+      const mediaResults = await searchWithFallback(mediaQuery, 4);
+      allResults.push(...mediaResults);
     }
   }
 
