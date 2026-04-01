@@ -201,6 +201,94 @@ async function searchWithFallback(query, limit = 5) {
 }
 
 /**
+ * Taiwan industry statistics sources — map topic keywords to known authoritative URLs.
+ * Returns array of { url, title, searchQuery? } entries.
+ */
+function buildDirectMarketURLs(topic) {
+  const t = (topic || '').toLowerCase();
+  const urls = [];
+
+  // ── Always include: Taiwan international trade statistics ──
+  urls.push({
+    url: 'https://www.trade.gov.tw/Pages/List.aspx?nodeID=1375',
+    title: '國際貿易署 — 進出口統計資料',
+  });
+
+  // ── Furniture / 家具 ──
+  if (/家具|傢俱|furniture/.test(t)) {
+    urls.push(
+      { url: 'https://www.tfma.org.tw/report/2023', title: '台灣區家具工業同業公會 2023 年報' },
+      { url: 'https://www.tfma.org.tw/report/2024', title: '台灣區家具工業同業公會 2024 年報' },
+      { url: 'https://www.tfma.org.tw/report', title: '台灣區家具工業同業公會 統計報告' },
+    );
+  }
+
+  // ── Food & Beverage / 食品飲料 ──
+  if (/食品|飲料|beverage|food/.test(t)) {
+    urls.push({ url: 'https://www.tfda.moa.gov.tw/index.aspx', title: '食品藥物管理署 統計資料' });
+  }
+
+  // ── Semiconductor / 半導體 ──
+  if (/半導體|ic|晶圓|semiconductor/.test(t)) {
+    urls.push(
+      { url: 'https://www.moea.gov.tw/Mns/populace/news/News.aspx?kind=1', title: '經濟部 半導體產業資訊' },
+      { url: 'https://www.tsia.org.tw/', title: '台灣半導體產業協會' },
+    );
+  }
+
+  // ── Retail / 零售 ──
+  if (/零售|retail|百貨|超市/.test(t)) {
+    urls.push({ url: 'https://www.census.gov.tw/lp.asp?CtNode=21052&CtUnit=14565&BaseDSD=7', title: '主計總處 零售業統計' });
+  }
+
+  // ── Real Estate / 房地產 ──
+  if (/房地產|不動產|real estate|住宅/.test(t)) {
+    urls.push({ url: 'https://pip.moi.gov.tw/V3/E/SCRE0101.aspx', title: '內政部不動產資訊平台' });
+  }
+
+  // ── Supplement search queries targeting stats sources ──
+  const statsQueries = [
+    `${topic} 進口 出口 金額 統計 site:trade.gov.tw`,
+    `${topic} 同業公會 統計 台灣 2023 2024`,
+  ];
+
+  return { directURLs: urls, statsQueries };
+}
+
+/**
+ * Scrape direct market statistics URLs for Taiwan market research.
+ * Equivalent of scrapeDirectFinancialURLs but for industry/market topics.
+ */
+async function scrapeDirectMarketURLs(topic) {
+  const { directURLs, statsQueries } = buildDirectMarketURLs(topic);
+  const results = [];
+
+  // Scrape known URLs
+  if (directURLs.length > 0) {
+    logger.step('COLLECTOR', `抓取 ${directURLs.length} 個台灣統計來源頁面...`);
+    const scraped = await Promise.all(directURLs.map(async ({ url, title }) => {
+      logger.info('COLLECTOR', `  抓取: ${url}`);
+      const content = await scrapeFirecrawl(url);
+      if (content && content.length > 200) return { url, title, markdown: content };
+      logger.warn('COLLECTOR', `  失敗或內容不足: ${url}`);
+      return null;
+    }));
+    results.push(...scraped.filter(Boolean));
+  }
+
+  // Additional stats-targeted search queries
+  for (const q of statsQueries) {
+    if (results.length >= 8) break;
+    logger.info('COLLECTOR', `  統計來源搜尋: ${q}`);
+    const found = await searchWithFallback(q, 3);
+    results.push(...found);
+  }
+
+  logger.info('COLLECTOR', `直接抓取市場統計資料：共取得 ${results.length} 個來源`);
+  return results;
+}
+
+/**
  * Build direct URLs for known financial data pages.
  * These are real pages with structured financial data, not search queries.
  */
@@ -453,8 +541,7 @@ export async function runCollector(plan, options = {}) {
     logger.step('COLLECTOR', `企業研究模式：${plan.company_name || plan.topic}（${planMeta.market}）`);
   }
 
-  // ── Pass 0: Direct financial data scraping (company mode only) ──
-  // Grab annual reports, Goodinfo pages, HKEX filings BEFORE question-based search
+  // ── Pass 0: Direct data scraping before question-based search ──
   let directFinancialSources = [];
   if (planMeta.research_mode === 'company') {
     logger.step('COLLECTOR', '直接抓取官方財務資料（年報、港交所、Goodinfo）...');
@@ -463,6 +550,10 @@ export async function runCollector(plan, options = {}) {
       plan.ticker || '',
       planMeta.market
     );
+  } else {
+    // Market mode: scrape Taiwan industry association & government stats sources directly
+    logger.step('COLLECTOR', '直接抓取台灣產業統計來源（同業公會、國際貿易署）...');
+    directFinancialSources = await scrapeDirectMarketURLs(plan.topic);
   }
 
   const results = [];
