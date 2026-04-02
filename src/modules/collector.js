@@ -494,14 +494,28 @@ export async function collectForQuestion(question, maxSources, planMeta = {}) {
   // searchWithFallback already tries Exa, no need for separate fallback
 
   const sources = [];
+  const references = []; // 所有搜尋到的 URL（含內容不足的），用於報告附錄
   const seenDomains = new Set();
+  const seenRefUrls = new Set();
 
   for (const result of allResults) {
-    if (sources.length >= maxSources) break;
     if (!result.url) continue;
 
     let domain;
     try { domain = new URL(result.url).hostname; } catch { continue; }
+
+    // 記錄所有搜尋到的 URL 作為參考來源（不論內容是否足夠）
+    if (!seenRefUrls.has(result.url)) {
+      seenRefUrls.add(result.url);
+      references.push({
+        url: result.url,
+        title: result.title || domain,
+        domain,
+        fetched_at: new Date().toISOString(),
+      });
+    }
+
+    if (sources.length >= maxSources) continue;
     if (seenDomains.has(domain)) continue;
     seenDomains.add(domain);
 
@@ -514,7 +528,7 @@ export async function collectForQuestion(question, maxSources, planMeta = {}) {
     }
 
     if (!content || content.length < 100) {
-      logger.warn('COLLECTOR', `[${question.id}] 內容過短，跳過：${domain}`);
+      logger.warn('COLLECTOR', `[${question.id}] 內容過短，跳過分析：${domain}`);
       continue;
     }
 
@@ -533,7 +547,7 @@ export async function collectForQuestion(question, maxSources, planMeta = {}) {
     logger.warn('COLLECTOR', `[${question.id}] 無任何來源，將以 Claude 知識填充`);
   }
 
-  return { question_id: question.id, question: question.question, sources };
+  return { question_id: question.id, question: question.question, sources, references };
 }
 
 /**

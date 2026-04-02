@@ -4,12 +4,13 @@ import { logger } from '../utils/logger.js';
 import { REPORTER_SYSTEM, buildReporterPrompt, buildSectionPrompt } from '../prompts/reporter.prompt.js';
 
 /**
- * 從 raw_sources 萃取去重來源清單
+ * 從 raw_sources 萃取去重來源清單（含 references：搜尋到但內容不足的 URL）
  */
 function extractSources(rawSources, tmpDir) {
   const seen = new Set();
   const sources = [];
   for (const q of rawSources || []) {
+    // 主要來源（有完整內容，用於分析）
     for (const s of q.sources || []) {
       if (!seen.has(s.url)) {
         seen.add(s.url);
@@ -18,6 +19,18 @@ function extractSources(rawSources, tmpDir) {
           url: s.url,
           domain: s.domain,
           fetched_at: s.fetched_at,
+        });
+      }
+    }
+    // 參考來源（搜尋到的所有 URL，包含內容不足的）
+    for (const r of q.references || []) {
+      if (!seen.has(r.url)) {
+        seen.add(r.url);
+        sources.push({
+          title: r.title || r.domain,
+          url: r.url,
+          domain: r.domain,
+          fetched_at: r.fetched_at,
         });
       }
     }

@@ -347,7 +347,26 @@ def build_section(doc, section):
     if len(raw_blocks) <= 1:
         # Claude 可能只用單換行，或根本沒換行 — 嘗試單換行切分
         raw_blocks = [b.strip() for b in content.split('\n') if b.strip()]
-    paragraphs = raw_blocks
+
+    # 自動斷段：若任何段落超過 350 字，在句號處切開
+    paragraphs = []
+    for block in raw_blocks:
+        if len(block) <= 350:
+            paragraphs.append(block)
+        else:
+            # 在句號（。）、驚嘆號（！）、問號（？）處切分
+            import re
+            sentences = re.split(r'(?<=[。！？])\s*', block)
+            current = ''
+            for sent in sentences:
+                if len(current) + len(sent) > 300 and current:
+                    paragraphs.append(current.strip())
+                    current = sent
+                else:
+                    current += sent
+            if current.strip():
+                paragraphs.append(current.strip())
+
     for para_text in paragraphs:
         p = doc.add_paragraph()
         p.paragraph_format.space_after       = Pt(8)
