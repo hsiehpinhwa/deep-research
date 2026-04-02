@@ -187,9 +187,18 @@ export async function runReporter(plan, analysis, rawSources, options = {}) {
 
   // 注入真實來源（三層：collector sources + references + analyzer data_points）
   const effectiveRawSources = rawSources || loadTmp('raw_sources.json', tmpDir) || [];
+
+  // 診斷用：顯示各層來源數量
+  const srcCount = effectiveRawSources.reduce((sum, q) => sum + (q.sources?.length || 0), 0);
+  const refCount = effectiveRawSources.reduce((sum, q) => sum + (q.references?.length || 0), 0);
+  const dpCount = analysis.reduce((sum, a) => {
+    return sum + (a.synthesis?.data_points?.filter(dp => typeof dp === 'object' && dp.source_url && dp.source_url !== '未標明').length || 0);
+  }, 0);
+  logger.info('REPORTER', `來源診斷: rawSources=${effectiveRawSources.length}組, sources=${srcCount}, references=${refCount}, data_points有URL=${dpCount}`);
+
   const sources = extractSources(effectiveRawSources, analysis);
   report.sources = sources;
-  logger.info('REPORTER', `已注入 ${sources.length} 個來源`);
+  logger.info('REPORTER', `已注入 ${sources.length} 個來源（去重後）`);
 
   const path = saveTmp(cacheKey, report, tmpDir);
   logger.info('REPORTER', `報告已生成：${fullSections.length} 個章節，儲存至 ${path}`);

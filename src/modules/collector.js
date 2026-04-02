@@ -243,21 +243,39 @@ async function searchBrave(query, limit = 5) {
 async function searchWithFallback(query, limit = 5) {
   // Tier 1: Firecrawl (paid, best quality — search + full content)
   const fcResults = await searchFirecrawl(query, limit);
-  if (fcResults.length > 0) return fcResults;
+  if (fcResults.length > 0) {
+    logger.info('COLLECTOR', `🔍 搜尋成功 [Firecrawl] ${fcResults.length} 筆: ${query.slice(0, 40)}...`);
+    return fcResults;
+  }
 
   // Tier 2: Brave Search (free 2000/month, good quality)
-  logger.info('COLLECTOR', `Firecrawl 無結果，Brave 備援: ${query.slice(0, 50)}...`);
+  const hasBrave = !!config.brave?.apiKey;
+  logger.info('COLLECTOR', `Firecrawl 無結果，Brave 備援 (key=${hasBrave ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
   const braveResults = await searchBrave(query, limit);
-  if (braveResults.length > 0) return braveResults;
+  if (braveResults.length > 0) {
+    logger.info('COLLECTOR', `🔍 搜尋成功 [Brave] ${braveResults.length} 筆: ${query.slice(0, 40)}...`);
+    return braveResults;
+  }
 
   // Tier 3: Google Custom Search (free 100/day)
-  logger.info('COLLECTOR', `Brave 無結果，Google CSE 備援: ${query.slice(0, 50)}...`);
+  const hasGoogle = !!(config.google?.cseApiKey && config.google?.cseCx);
+  logger.info('COLLECTOR', `Brave 無結果，Google CSE 備援 (key=${hasGoogle ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
   const googleResults = await searchGoogle(query, limit);
-  if (googleResults.length > 0) return googleResults;
+  if (googleResults.length > 0) {
+    logger.info('COLLECTOR', `🔍 搜尋成功 [Google CSE] ${googleResults.length} 筆: ${query.slice(0, 40)}...`);
+    return googleResults;
+  }
 
   // Tier 4: Exa (neural search)
-  logger.info('COLLECTOR', `Google CSE 無結果，Exa 備援: ${query.slice(0, 50)}...`);
-  return searchExa(query, limit);
+  const hasExa = !!config.exa?.apiKey;
+  logger.info('COLLECTOR', `Google CSE 無結果，Exa 備援 (key=${hasExa ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
+  const exaResults = await searchExa(query, limit);
+  if (exaResults.length > 0) {
+    logger.info('COLLECTOR', `🔍 搜尋成功 [Exa] ${exaResults.length} 筆: ${query.slice(0, 40)}...`);
+  } else {
+    logger.warn('COLLECTOR', `⚠️ 所有搜尋引擎均無結果: ${query.slice(0, 60)}`);
+  }
+  return exaResults;
 }
 
 /**
@@ -322,12 +340,15 @@ function buildDirectMarketURLs(topic) {
 async function scrapeDirectMarketURLs(topic) {
   const { directURLs, statsQueries } = buildDirectMarketURLs(topic);
   const results = [];
+  const allAttemptedUrls = []; // 記錄所有嘗試過的 URL（含失敗的）
 
   // Scrape known URLs
   if (directURLs.length > 0) {
     logger.step('COLLECTOR', `抓取 ${directURLs.length} 個台灣統計來源頁面...`);
     const scraped = await Promise.all(directURLs.map(async ({ url, title }) => {
       logger.info('COLLECTOR', `  抓取: ${url}`);
+      // 不論結果如何，都記錄嘗試過的 URL
+      allAttemptedUrls.push({ url, title });
       const content = await scrapeFirecrawl(url);
       if (content && content.length > 200) return { url, title, markdown: content };
       logger.warn('COLLECTOR', `  失敗或內容不足: ${url}`);
@@ -341,11 +362,14 @@ async function scrapeDirectMarketURLs(topic) {
     if (results.length >= 8) break;
     logger.info('COLLECTOR', `  統計來源搜尋: ${q}`);
     const found = await searchWithFallback(q, 3);
+    for (const f of found) {
+      if (f.url) allAttemptedUrls.push({ url: f.url, title: f.title || '' });
+    }
     results.push(...found);
   }
 
-  logger.info('COLLECTOR', `直接抓取市場統計資料：共取得 ${results.length} 個來源`);
-  return results;
+  logger.info('COLLECTOR', `直接抓取市場統計資料：成功 ${results.length} / 嘗試 ${allAttemptedUrls.length} 個來源`);
+  return { results, allAttemptedUrls };
 }
 
 /**
@@ -416,6 +440,7 @@ function buildDirectFinancialURLs(companyName, ticker, market) {
 async function scrapeDirectFinancialURLs(companyName, ticker, market) {
   const directURLs = buildDirectFinancialURLs(companyName, ticker, market);
   const results = [];
+  const allAttemptedUrls = []; // 記錄所有嘗試過的 URL
 
   // Phase 1: Scrape known URLs in parallel (max 4 at a time)
   if (directURLs.length > 0) {
@@ -425,6 +450,7 @@ async function scrapeDirectFinancialURLs(companyName, ticker, market) {
       const batch = directURLs.slice(i, i + BATCH);
       const scraped = await Promise.all(batch.map(async ({ url, title }) => {
         logger.info('COLLECTOR', `  抓取: ${url}`);
+        allAttemptedUrls.push({ url, title });
         const content = await scrapeFirecrawl(url);
         if (content && content.length > 200) {
           return { url, title, markdown: content };
@@ -449,11 +475,14 @@ async function scrapeDirectFinancialURLs(companyName, ticker, market) {
     if (results.length >= 12) break;
     logger.info('COLLECTOR', `  搜尋: ${q}`);
     const searchResults = await searchWithFallback(q, 4);
+    for (const sr of searchResults) {
+      if (sr.url) allAttemptedUrls.push({ url: sr.url, title: sr.title || '' });
+    }
     results.push(...searchResults);
   }
 
-  logger.info('COLLECTOR', `直接抓取財務資料：共取得 ${results.length} 個來源`);
-  return results;
+  logger.info('COLLECTOR', `直接抓取財務資料：成功 ${results.length} / 嘗試 ${allAttemptedUrls.length} 個來源`);
+  return { results, allAttemptedUrls };
 }
 
 /**
@@ -627,18 +656,26 @@ export async function runCollector(plan, options = {}) {
 
   // ── Pass 0: Direct data scraping before question-based search ──
   let directFinancialSources = [];
+  let allDirectUrls = []; // 所有嘗試過的直連 URL（含失敗的）
   if (planMeta.research_mode === 'company') {
     logger.step('COLLECTOR', '直接抓取官方財務資料（年報、港交所、Goodinfo）...');
-    directFinancialSources = await scrapeDirectFinancialURLs(
+    const directResult = await scrapeDirectFinancialURLs(
       plan.company_name || plan.topic,
       plan.ticker || '',
       planMeta.market
     );
+    directFinancialSources = directResult.results;
+    allDirectUrls = directResult.allAttemptedUrls;
   } else {
     // Market mode: scrape Taiwan industry association & government stats sources directly
     logger.step('COLLECTOR', '直接抓取台灣產業統計來源（同業公會、國際貿易署）...');
-    directFinancialSources = await scrapeDirectMarketURLs(plan.topic);
+    const directResult = await scrapeDirectMarketURLs(plan.topic);
+    directFinancialSources = directResult.results;
+    allDirectUrls = directResult.allAttemptedUrls;
   }
+
+  // 診斷用：顯示搜尋引擎配置狀態
+  logger.step('COLLECTOR', `搜尋引擎狀態: Firecrawl=${config.firecrawl.apiKey ? (firecrawlExhausted ? '額度用完' : '可用') : '未設定'} | Brave=${config.brave?.apiKey ? '可用' : '未設定'} | Google=${config.google?.cseApiKey ? '可用' : '未設定'} | Exa=${config.exa?.apiKey ? '可用' : '未設定'}`);
 
   const results = [];
 
@@ -669,9 +706,28 @@ export async function runCollector(plan, options = {}) {
     }
   }
 
+  // ── 將所有嘗試過的直連 URL 注入為 references（確保報告附錄能顯示） ──
+  if (allDirectUrls.length > 0 && results.length > 0) {
+    const firstQ = results[0];
+    if (!firstQ.references) firstQ.references = [];
+    for (const du of allDirectUrls) {
+      if (!firstQ.references.some(r => r.url === du.url)) {
+        let domain = '';
+        try { domain = new URL(du.url).hostname; } catch {}
+        firstQ.references.push({
+          url: du.url,
+          title: du.title || domain,
+          domain,
+          fetched_at: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
   const path = saveTmp(cacheKey, results, tmpDir);
   const totalSources = results.reduce((sum, r) => sum + r.sources.length, 0);
-  logger.info('COLLECTOR', `蒐集完成：${totalSources} 個來源 → ${path}`);
+  const totalRefs = results.reduce((sum, r) => sum + (r.references?.length || 0), 0);
+  logger.info('COLLECTOR', `蒐集完成：${totalSources} 個來源 + ${totalRefs} 個參考引用 → ${path}`);
 
   return results;
 }

@@ -45,7 +45,7 @@ function mergeSources(original, additional) {
     }
   }
 
-  // Add new sources as additional question entries
+  // Add new sources as additional question entries (preserve references)
   for (const q of additional) {
     const newSources = (q.sources || []).filter(s => !seenUrls.has(s.url));
     if (newSources.length > 0) {
@@ -53,6 +53,7 @@ function mergeSources(original, additional) {
         question_id: q.question_id,
         question: q.question,
         sources: newSources,
+        references: q.references || [],
       });
       for (const s of newSources) seenUrls.add(s.url);
     }
