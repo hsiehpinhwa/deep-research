@@ -4,37 +4,51 @@ import { logger } from '../utils/logger.js';
 import { REPORTER_SYSTEM, buildReporterPrompt, buildSectionPrompt } from '../prompts/reporter.prompt.js';
 
 /**
- * 從 raw_sources 萃取去重來源清單（含 references：搜尋到但內容不足的 URL）
+ * 從 raw_sources + analysis 萃取完整去重來源清單
+ * 三層來源：
+ *   1. rawSources[].sources — collector 蒐集且內容充足的來源
+ *   2. rawSources[].references — 搜尋到但內容不足的 URL
+ *   3. analysis[].synthesis.data_points[].source_url — analyzer 實際引用的 URL
  */
-function extractSources(rawSources, tmpDir) {
+function extractSources(rawSources, analysis) {
   const seen = new Set();
   const sources = [];
-  for (const q of rawSources || []) {
-    // 主要來源（有完整內容，用於分析）
-    for (const s of q.sources || []) {
-      if (!seen.has(s.url)) {
-        seen.add(s.url);
-        sources.push({
-          title: s.title || s.domain,
-          url: s.url,
-          domain: s.domain,
-          fetched_at: s.fetched_at,
-        });
-      }
+
+  function addSource(url, title, domain, fetchedAt) {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    let d = domain;
+    if (!d) {
+      try { d = new URL(url).hostname; } catch { d = ''; }
     }
-    // 參考來源（搜尋到的所有 URL，包含內容不足的）
+    sources.push({ title: title || d, url, domain: d, fetched_at: fetchedAt });
+  }
+
+  // Layer 1: collector 的主要來源
+  for (const q of rawSources || []) {
+    for (const s of q.sources || []) {
+      addSource(s.url, s.title || s.domain, s.domain, s.fetched_at);
+    }
+    // Layer 2: 搜尋到但內容不足的 URL
     for (const r of q.references || []) {
-      if (!seen.has(r.url)) {
-        seen.add(r.url);
-        sources.push({
-          title: r.title || r.domain,
-          url: r.url,
-          domain: r.domain,
-          fetched_at: r.fetched_at,
-        });
+      addSource(r.url, r.title || r.domain, r.domain, r.fetched_at);
+    }
+  }
+
+  // Layer 3: analyzer 的 data_points 中實際引用的 source_url
+  for (const a of analysis || []) {
+    const dps = a.synthesis?.data_points || [];
+    for (const dp of dps) {
+      const url = typeof dp === 'object' ? dp.source_url : null;
+      if (url && url !== '未標明') {
+        // 從 data_point 的 claim 擷取更好的標題
+        const claim = typeof dp === 'object' ? dp.claim : '';
+        const title = claim ? claim.slice(0, 50) : '';
+        addSource(url, title, null, null);
       }
     }
   }
+
   return sources;
 }
 
@@ -171,10 +185,9 @@ export async function runReporter(plan, analysis, rawSources, options = {}) {
     report.meta.date = `${now.getFullYear()}年${now.getMonth() + 1}月`;
   }
 
-  // 注入真實來源（從 rawSources 萃取，或嘗試從快取載入）
-  const sources = rawSources
-    ? extractSources(rawSources, tmpDir)
-    : extractSources(loadTmp('raw_sources.json', tmpDir) || [], tmpDir);
+  // 注入真實來源（三層：collector sources + references + analyzer data_points）
+  const effectiveRawSources = rawSources || loadTmp('raw_sources.json', tmpDir) || [];
+  const sources = extractSources(effectiveRawSources, analysis);
   report.sources = sources;
   logger.info('REPORTER', `已注入 ${sources.length} 個來源`);
 
