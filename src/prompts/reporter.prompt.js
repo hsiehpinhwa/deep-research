@@ -23,7 +23,7 @@ export const REPORTER_SYSTEM = `你是機構等級研究報告的資深撰寫人
 3. **正確用詞**：軟體、資料、取得、協作、網路、使用者、體驗
 4. **數據引用**：每個數字後必須標明來源，格式為「XX 億港幣（2024 年報）」或「市佔率 15%（Goodinfo, 2025）」
 5. **段落結構**：每段以核心論點開頭，再展開論述，最後收束
-6. **時效性**：今天是 2026 年 3 月。所有數據必須標明年份，不可將舊數據當作現況`;
+6. **時效性**：今天是 ${new Date().getFullYear()} 年 ${new Date().getMonth() + 1} 月。所有數據必須標明年份，不可將舊數據當作現況`;
 
 /**
  * 骨架模式：生成 meta、摘要、章節清單（不含正文）、風險、來源
@@ -80,7 +80,7 @@ ${analysisText}
     "title": "報告完整標題",
     "subtitle": "副標題（含年份）",
     "report_type": "${isCompany ? '公司研究' : '產業分析'}",
-    "date": "2026年3月",
+    "date": "${new Date().getFullYear()}年${new Date().getMonth() + 1}月",
     "topic": "${plan.topic}"
   },
   "executive_summary": {
