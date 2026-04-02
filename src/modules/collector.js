@@ -197,22 +197,27 @@ async function scrapeFirecrawl(url) {
  * Brave Search API（免費 2000 次/月，搜尋品質優）
  */
 async function searchBrave(query, limit = 5) {
-  if (!config.brave?.apiKey) return [];
+  if (!config.brave?.apiKey) {
+    logger.warn('COLLECTOR', `Brave API key 未設定，跳過`);
+    return [];
+  }
   try {
+    logger.info('COLLECTOR', `Brave 搜尋中 (key=${config.brave.apiKey.slice(0, 8)}...): ${query.slice(0, 50)}`);
     const res = await axios.get(config.brave.baseUrl, {
       params: {
         q: query,
         count: Math.min(limit, 20),
         text_decorations: false,
-        search_lang: 'zh-hant',
+        // 不限制 search_lang，讓 Brave 自動偵測語言（支援中文簡繁體）
       },
       headers: {
         'Accept': 'application/json',
         'X-Subscription-Token': config.brave.apiKey,
       },
-      timeout: 10000,
+      timeout: 15000,
     });
     const items = res.data?.web?.results || [];
+    logger.info('COLLECTOR', `Brave 回傳 ${items.length} 筆結果`);
 
     // Brave returns description (~300 chars). Auto-scrape top results for full content.
     const results = [];
@@ -232,7 +237,10 @@ async function searchBrave(query, limit = 5) {
     }
     return results;
   } catch (err) {
-    logger.warn('COLLECTOR', `Brave Search 搜尋失敗：${err.response?.status} ${err.message}`);
+    const status = err.response?.status;
+    const data = err.response?.data;
+    logger.warn('COLLECTOR', `Brave Search 搜尋失敗：status=${status} msg=${err.message}`);
+    if (data) logger.warn('COLLECTOR', `Brave 錯誤詳情: ${JSON.stringify(data).slice(0, 200)}`);
     return [];
   }
 }
@@ -279,58 +287,103 @@ async function searchWithFallback(query, limit = 5) {
 }
 
 /**
- * Taiwan industry statistics sources — map topic keywords to known authoritative URLs.
- * Returns array of { url, title, searchQuery? } entries.
+ * Detect target market/region from topic string.
+ * Returns 'cn' | 'tw' | 'us' | 'jp' | 'sea' | 'global'
+ */
+function detectMarketFromTopic(topic) {
+  const t = (topic || '').toLowerCase();
+  if (/中國|中国|大陸|大陆|china|chinese|內地|内地/.test(t)) return 'cn';
+  if (/台灣|台湾|taiwan/.test(t)) return 'tw';
+  if (/美國|美国|us|usa|america/.test(t)) return 'us';
+  if (/日本|japan/.test(t)) return 'jp';
+  if (/東南亞|东南亚|southeast asia|asean/.test(t)) return 'sea';
+  if (/歐洲|欧洲|europe/.test(t)) return 'eu';
+  if (/香港|hong kong/.test(t)) return 'hk';
+  return 'global';
+}
+
+/**
+ * Build direct URLs based on detected market and industry.
+ * Returns array of { url, title } entries + search queries.
  */
 function buildDirectMarketURLs(topic) {
   const t = (topic || '').toLowerCase();
+  const market = detectMarketFromTopic(topic);
   const urls = [];
 
-  // ── Always include: Taiwan international trade statistics ──
-  urls.push({
-    url: 'https://www.trade.gov.tw/Pages/List.aspx?nodeID=1375',
-    title: '國際貿易署 — 進出口統計資料',
-  });
-
-  // ── Furniture / 家具 ──
-  if (/家具|傢俱|furniture/.test(t)) {
+  // ── Market-specific government/industry URLs ──
+  if (market === 'cn') {
+    // 中國市場
     urls.push(
-      { url: 'https://www.tfma.org.tw/report/2023', title: '台灣區家具工業同業公會 2023 年報' },
-      { url: 'https://www.tfma.org.tw/report/2024', title: '台灣區家具工業同業公會 2024 年報' },
-      { url: 'https://www.tfma.org.tw/report', title: '台灣區家具工業同業公會 統計報告' },
+      { url: 'http://www.stats.gov.cn/', title: '中國國家統計局' },
+      { url: 'http://www.customs.gov.cn/customs/302249/zfxxgk/2799825/302274/index.html', title: '中國海關總署 進出口統計' },
+    );
+    if (/家具|傢俱|furniture/.test(t)) {
+      urls.push(
+        { url: 'http://www.cnfa.com.cn/', title: '中國家具協會' },
+        { url: 'https://www.chinairn.com/market/jiaju.html', title: '中研網 家具市場分析' },
+      );
+    }
+    if (/食品|飲料|beverage|food/.test(t)) {
+      urls.push({ url: 'http://www.cnfia.cn/', title: '中國食品工業協會' });
+    }
+    if (/半導體|ic|晶圓|semiconductor|芯片/.test(t)) {
+      urls.push({ url: 'http://www.csia.net.cn/', title: '中國半導體行業協會' });
+    }
+    if (/房地產|不動產|real estate|住宅|樓市/.test(t)) {
+      urls.push({ url: 'https://www.crea.org.cn/', title: '中國房地產業協會' });
+    }
+  } else if (market === 'tw') {
+    // 台灣市場
+    urls.push({
+      url: 'https://www.trade.gov.tw/Pages/List.aspx?nodeID=1375',
+      title: '國際貿易署 — 進出口統計資料',
+    });
+    if (/家具|傢俱|furniture/.test(t)) {
+      urls.push(
+        { url: 'https://www.tfma.org.tw/report/2023', title: '台灣區家具工業同業公會 2023 年報' },
+        { url: 'https://www.tfma.org.tw/report/2024', title: '台灣區家具工業同業公會 2024 年報' },
+      );
+    }
+    if (/食品|飲料|beverage|food/.test(t)) {
+      urls.push({ url: 'https://www.tfda.moa.gov.tw/index.aspx', title: '食品藥物管理署 統計資料' });
+    }
+    if (/半導體|ic|晶圓|semiconductor/.test(t)) {
+      urls.push({ url: 'https://www.tsia.org.tw/', title: '台灣半導體產業協會' });
+    }
+  } else if (market === 'us') {
+    urls.push(
+      { url: 'https://www.census.gov/econ/', title: 'U.S. Census Bureau Economic Data' },
+      { url: 'https://www.bls.gov/', title: 'Bureau of Labor Statistics' },
+    );
+  } else {
+    // Global / 其他 — 國際通用來源
+    urls.push(
+      { url: 'https://www.statista.com/', title: 'Statista 全球統計' },
     );
   }
 
-  // ── Food & Beverage / 食品飲料 ──
-  if (/食品|飲料|beverage|food/.test(t)) {
-    urls.push({ url: 'https://www.tfda.moa.gov.tw/index.aspx', title: '食品藥物管理署 統計資料' });
-  }
-
-  // ── Semiconductor / 半導體 ──
-  if (/半導體|ic|晶圓|semiconductor/.test(t)) {
-    urls.push(
-      { url: 'https://www.moea.gov.tw/Mns/populace/news/News.aspx?kind=1', title: '經濟部 半導體產業資訊' },
-      { url: 'https://www.tsia.org.tw/', title: '台灣半導體產業協會' },
+  // ── 根據市場生成對應的搜尋查詢 ──
+  const statsQueries = [];
+  if (market === 'cn') {
+    statsQueries.push(
+      `${topic} 市場規模 產值 統計 2024 2025`,
+      `${topic} 行業分析 市場趨勢 報告`,
+      `${topic} 進出口 海關統計 數據`,
+    );
+  } else if (market === 'tw') {
+    statsQueries.push(
+      `${topic} 進口 出口 金額 統計 site:trade.gov.tw`,
+      `${topic} 同業公會 統計 台灣 2023 2024`,
+    );
+  } else {
+    statsQueries.push(
+      `${topic} market size revenue statistics 2024 2025`,
+      `${topic} industry analysis report`,
     );
   }
 
-  // ── Retail / 零售 ──
-  if (/零售|retail|百貨|超市/.test(t)) {
-    urls.push({ url: 'https://www.census.gov.tw/lp.asp?CtNode=21052&CtUnit=14565&BaseDSD=7', title: '主計總處 零售業統計' });
-  }
-
-  // ── Real Estate / 房地產 ──
-  if (/房地產|不動產|real estate|住宅/.test(t)) {
-    urls.push({ url: 'https://pip.moi.gov.tw/V3/E/SCRE0101.aspx', title: '內政部不動產資訊平台' });
-  }
-
-  // ── Supplement search queries targeting stats sources ──
-  const statsQueries = [
-    `${topic} 進口 出口 金額 統計 site:trade.gov.tw`,
-    `${topic} 同業公會 統計 台灣 2023 2024`,
-  ];
-
-  return { directURLs: urls, statsQueries };
+  return { directURLs: urls, statsQueries, detectedMarket: market };
 }
 
 /**
@@ -338,13 +391,15 @@ function buildDirectMarketURLs(topic) {
  * Equivalent of scrapeDirectFinancialURLs but for industry/market topics.
  */
 async function scrapeDirectMarketURLs(topic) {
-  const { directURLs, statsQueries } = buildDirectMarketURLs(topic);
+  const { directURLs, statsQueries, detectedMarket } = buildDirectMarketURLs(topic);
   const results = [];
   const allAttemptedUrls = []; // 記錄所有嘗試過的 URL（含失敗的）
 
+  logger.step('COLLECTOR', `偵測到目標市場: ${detectedMarket} (主題: ${topic})`);
+
   // Scrape known URLs
   if (directURLs.length > 0) {
-    logger.step('COLLECTOR', `抓取 ${directURLs.length} 個台灣統計來源頁面...`);
+    logger.step('COLLECTOR', `抓取 ${directURLs.length} 個${detectedMarket === 'cn' ? '中國' : detectedMarket === 'tw' ? '台灣' : ''}統計來源頁面...`);
     const scraped = await Promise.all(directURLs.map(async ({ url, title }) => {
       logger.info('COLLECTOR', `  抓取: ${url}`);
       // 不論結果如何，都記錄嘗試過的 URL
