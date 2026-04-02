@@ -194,19 +194,68 @@ async function scrapeFirecrawl(url) {
 }
 
 /**
- * Three-tier search fallback: Firecrawl → Google CSE → Exa
+ * Brave Search API（免費 2000 次/月，搜尋品質優）
+ */
+async function searchBrave(query, limit = 5) {
+  if (!config.brave?.apiKey) return [];
+  try {
+    const res = await axios.get(config.brave.baseUrl, {
+      params: {
+        q: query,
+        count: Math.min(limit, 20),
+        text_decorations: false,
+        search_lang: 'zh-hant',
+      },
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': config.brave.apiKey,
+      },
+      timeout: 10000,
+    });
+    const items = res.data?.web?.results || [];
+
+    // Brave returns description (~300 chars). Auto-scrape top results for full content.
+    const results = [];
+    for (const item of items.slice(0, Math.min(limit, 5))) {
+      let content = item.description || '';
+
+      // Try to scrape full page content (free, no API credits)
+      if (content.length < 500) {
+        const fullContent = await scrapeFree(item.url);
+        if (fullContent && fullContent.length > content.length) {
+          content = fullContent;
+          logger.info('COLLECTOR', `  Brave 補抓成功: ${item.url.slice(0, 60)}... (${fullContent.length} chars)`);
+        }
+      }
+
+      results.push({ url: item.url, title: item.title, markdown: content });
+    }
+    return results;
+  } catch (err) {
+    logger.warn('COLLECTOR', `Brave Search 搜尋失敗：${err.response?.status} ${err.message}`);
+    return [];
+  }
+}
+
+/**
+ * Four-tier search fallback: Firecrawl → Brave → Google CSE → Exa
  */
 async function searchWithFallback(query, limit = 5) {
-  // Tier 1: Firecrawl (paid, best quality)
+  // Tier 1: Firecrawl (paid, best quality — search + full content)
   const fcResults = await searchFirecrawl(query, limit);
   if (fcResults.length > 0) return fcResults;
 
-  // Tier 2: Google Custom Search (free 100/day)
-  logger.info('COLLECTOR', `Firecrawl 無結果，Google CSE 備援: ${query.slice(0, 50)}...`);
+  // Tier 2: Brave Search (free 2000/month, good quality)
+  logger.info('COLLECTOR', `Firecrawl 無結果，Brave 備援: ${query.slice(0, 50)}...`);
+  const braveResults = await searchBrave(query, limit);
+  if (braveResults.length > 0) return braveResults;
+
+  // Tier 3: Google Custom Search (free 100/day)
+  logger.info('COLLECTOR', `Brave 無結果，Google CSE 備援: ${query.slice(0, 50)}...`);
   const googleResults = await searchGoogle(query, limit);
   if (googleResults.length > 0) return googleResults;
 
-  // Tier 3: Exa (neural search)
+  // Tier 4: Exa (neural search)
   logger.info('COLLECTOR', `Google CSE 無結果，Exa 備援: ${query.slice(0, 50)}...`);
   return searchExa(query, limit);
 }

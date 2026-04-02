@@ -32,6 +32,10 @@ export default {
     cseApiKey: process.env.GOOGLE_CSE_API_KEY || '',
     cseCx: process.env.GOOGLE_CSE_CX || '',
   },
+  brave: {
+    apiKey: process.env.BRAVE_SEARCH_API_KEY || '',
+    baseUrl: 'https://api.search.brave.com/res/v1/web/search',
+  },
   pipeline: {
     maxSourcesPerQuestion: parseInt(process.env.MAX_SOURCES_PER_QUESTION || '3'),
     maxReviewIterations: parseInt(process.env.MAX_REVIEW_ITERATIONS || '2'),
