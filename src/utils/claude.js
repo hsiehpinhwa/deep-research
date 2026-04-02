@@ -2,7 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import config from '../config.js';
 import { logger } from './logger.js';
 
-const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+const client = new Anthropic({
+  apiKey: config.anthropic.apiKey,
+  timeout: 120_000, // 2 分鐘超時，避免 API 無回應時永遠卡住
+});
 
 /**
  * Attempt to repair truncated JSON by closing open brackets/braces.
