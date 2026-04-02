@@ -6,6 +6,8 @@ import json, sys, os, argparse
 from datetime import datetime
 from pathlib import Path
 
+import re as _re
+
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor, Emu
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -93,6 +95,85 @@ def add_run(para, text, bold=False, size=None, color=None, italic=False):
     if color:
         run.font.color.rgb = color
     return run
+
+
+# ── Markdown → docx helpers ──────────────────────
+
+def _strip_md_block(text: str) -> str:
+    """
+    將 Claude 偶爾輸出的 markdown 語法轉換/清理為純文字，
+    同時保留段落結構（雙換行）。
+    處理：### 標題、**粗體**、*斜體*、--- 分隔線、markdown 表格、- 項目符號
+    """
+    lines = text.split('\n')
+    cleaned = []
+    in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # 跳過 markdown 分隔線 (---, ***, ___)
+        if _re.match(r'^[-*_]{3,}\s*$', stripped):
+            continue
+
+        # 跳過 markdown 表格分隔列 (|---|---|)
+        if _re.match(r'^\|[\s\-:|]+\|$', stripped):
+            in_table = True
+            continue
+
+        # markdown 表格資料列 → 提取為文字
+        if stripped.startswith('|') and stripped.endswith('|'):
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            cells = [c for c in cells if c]
+            if cells:
+                cleaned.append('　'.join(cells))
+            in_table = True
+            continue
+
+        in_table = False
+
+        # ### 標題 → 移除 # 前綴，保留文字
+        if stripped.startswith('#'):
+            stripped = _re.sub(r'^#{1,6}\s*', '', stripped)
+
+        # **粗體** 和 *斜體* → 移除 markdown 標記
+        stripped = _re.sub(r'\*\*(.+?)\*\*', r'\1', stripped)
+        stripped = _re.sub(r'\*(.+?)\*', r'\1', stripped)
+        stripped = _re.sub(r'__(.+?)__', r'\1', stripped)
+        stripped = _re.sub(r'_(.+?)_', r'\1', stripped)
+
+        # `code` → 移除反引號
+        stripped = _re.sub(r'`(.+?)`', r'\1', stripped)
+
+        # - 項目符號 → 替換為中文符號
+        if _re.match(r'^[-•]\s+', stripped):
+            stripped = _re.sub(r'^[-•]\s+', '▸ ', stripped)
+        elif _re.match(r'^\d+\.\s+', stripped):
+            pass  # 數字列表保留原樣
+
+        cleaned.append(stripped)
+
+    return '\n'.join(cleaned)
+
+
+def _render_rich_paragraph(doc, text, indent=True):
+    """
+    渲染一個段落，支援 **粗體** 內嵌語法。
+    其餘 markdown 語法應已被 _strip_md_block 清除。
+    """
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(8)
+    if indent:
+        p.paragraph_format.first_line_indent = Pt(22)
+
+    # 切分 **粗體** 片段
+    parts = _re.split(r'(\*\*.+?\*\*)', text)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            add_run(p, part[2:-2], bold=True, size=11, color=CHARCOAL)
+        else:
+            add_run(p, part, size=11, color=CHARCOAL)
+    return p
 
 
 # ── Table of Contents ────────────────────────────
@@ -341,8 +422,9 @@ def build_section(doc, section):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
-    # 正文：優先按雙換行（段落）切分，fallback 單換行
-    content = section.get('content', '')
+    # 正文：先清理 markdown 語法，再切段
+    content = _strip_md_block(section.get('content', ''))
+
     raw_blocks = [b.strip() for b in content.split('\n\n') if b.strip()]
     if len(raw_blocks) <= 1:
         # Claude 可能只用單換行，或根本沒換行 — 嘗試單換行切分
@@ -354,9 +436,7 @@ def build_section(doc, section):
         if len(block) <= 350:
             paragraphs.append(block)
         else:
-            # 在句號（。）、驚嘆號（！）、問號（？）處切分
-            import re
-            sentences = re.split(r'(?<=[。！？])\s*', block)
+            sentences = _re.split(r'(?<=[。！？])\s*', block)
             current = ''
             for sent in sentences:
                 if len(current) + len(sent) > 300 and current:
@@ -368,10 +448,7 @@ def build_section(doc, section):
                 paragraphs.append(current.strip())
 
     for para_text in paragraphs:
-        p = doc.add_paragraph()
-        p.paragraph_format.space_after       = Pt(8)
-        p.paragraph_format.first_line_indent = Pt(22)
-        add_run(p, para_text, size=11, color=CHARCOAL)
+        _render_rich_paragraph(doc, para_text)
 
     # 資料表格（由 Reporter 生成的 [TABLE_JSON] 解析而來）
     tables = section.get('tables', [])

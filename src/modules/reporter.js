@@ -86,6 +86,37 @@ function extractClaimsFromText(text) {
 }
 
 /**
+ * Strip common markdown syntax from section text.
+ * This is a safety net — the prompt already asks Claude not to use markdown.
+ */
+function stripMarkdownSyntax(text) {
+  return text
+    // Remove ### headers — keep the text
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove horizontal rules (---, ***, ___)
+    .replace(/^[-*_]{3,}\s*$/gm, '')
+    // Remove bold **text** → text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    // Remove italic *text* → text (single asterisk, not at word boundary confusion)
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '$1')
+    // Remove __ bold/italic
+    .replace(/__(.+?)__/g, '$1')
+    // Remove backtick code
+    .replace(/`(.+?)`/g, '$1')
+    // Convert markdown bullet lists to plain text
+    .replace(/^[-•]\s+/gm, '▸ ')
+    // Convert markdown table rows |a|b|c| to "a　b　c"
+    .replace(/^\|(.+)\|\s*$/gm, (_, inner) => {
+      // Skip separator rows |---|---|
+      if (/^[\s\-:|]+$/.test(inner)) return '';
+      return inner.split('|').map(s => s.trim()).filter(Boolean).join('　');
+    })
+    // Clean up multiple blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * Parse TABLE_JSON markers from section content.
  * Returns { cleanContent, tables[] }
  */
@@ -116,11 +147,12 @@ async function generateSection(sectionDef, plan, analysis, previousClaims = []) 
   );
 
   const { cleanContent, tables } = parseTablesFromContent(text.trim());
+  const finalContent = stripMarkdownSyntax(cleanContent);
 
   return {
     id: sectionDef.id,
     title: sectionDef.title,
-    content: cleanContent,
+    content: finalContent,
     tables,
     key_data: sectionDef.key_data || [],
     linked_questions: sectionDef.linked_questions || [],
