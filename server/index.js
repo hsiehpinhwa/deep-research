@@ -5,10 +5,14 @@ import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { createReadStream, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import { createJob, getJob, updateJobStatus, getActiveJobs } from './redis.js';
 import { runJob } from './jobRunner.js';
 
 import { BASE_OUT } from './config.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +27,9 @@ app.use(cors({
   }
 }));
 app.use(express.json());
+
+// Serve static frontend files from public/
+app.use(express.static(join(__dirname, '..', 'public')));
 
 // POST /api/jobs — create research job
 app.post('/api/jobs', async (req, res) => {
