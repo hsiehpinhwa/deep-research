@@ -4,7 +4,7 @@ import { logger } from './logger.js';
 
 const client = new Anthropic({
   apiKey: config.anthropic.apiKey,
-  timeout: 120_000, // 2 分鐘超時，避免 API 無回應時永遠卡住
+  timeout: 300_000, // 5 分鐘超時，writing 階段需要更長時間生成長篇內容
 });
 
 /**
@@ -116,7 +116,8 @@ export async function callClaude(systemPrompt, userContent, options = {}) {
     } catch (err) {
       const status = err?.status || err?.response?.status;
       const isRateLimit = status === 429;
-      const isRetryable = isRateLimit || status === 529 || (status && status >= 500);
+      const isTimeout = err?.code === 'ETIMEDOUT' || err?.message?.includes('timed out') || err?.message?.includes('timeout');
+      const isRetryable = isRateLimit || isTimeout || status === 529 || (status && status >= 500);
 
       if (!isRetryable || attempt === maxRetries) throw err;
 
