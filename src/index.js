@@ -10,6 +10,7 @@ import { logger } from './utils/logger.js';
 import { runPlanner } from './modules/planner.js';
 import { runCollector } from './modules/collector.js';
 import { runAnalyzer } from './modules/analyzer.js';
+import { runGapFill } from './modules/gapFill.js';
 import { runReporter } from './modules/reporter.js';
 import { runReviewer } from './modules/reviewer.js';
 import { runDeliverer } from './modules/deliverer.js';
@@ -77,6 +78,13 @@ async function main() {
       const { loadTmp } = await import('./utils/fileUtils.js');
       analysis = loadTmp('analysis.json');
       if (!analysis) throw new Error('找不到 analysis.json');
+    }
+
+    // ── 階段 3.5：缺口補充 ──────────────────────────────
+    if (!skipAnalyzer) {
+      const gapResult = await runGapFill(plan, rawSources, analysis, { force });
+      rawSources = gapResult.mergedSources;
+      analysis = gapResult.finalAnalysis;
     }
 
     // ── 階段 4：報告生成 ───────────────────────────────

@@ -60,7 +60,7 @@ export default {
     baseUrl: 'https://api.search.brave.com/res/v1/web/search',
   },
   pipeline: {
-    maxSourcesPerQuestion: parseInt(process.env.MAX_SOURCES_PER_QUESTION || '3'),
+    maxSourcesPerQuestion: parseInt(process.env.MAX_SOURCES_PER_QUESTION || '5'),
     maxReviewIterations: parseInt(process.env.MAX_REVIEW_ITERATIONS || '2'),
     reviewPassThreshold: parseFloat(process.env.REVIEW_PASS_THRESHOLD || '7.5'),
     outputDir: process.env.OUTPUT_DIR || './output',

@@ -305,30 +305,35 @@ async function searchWithFallback(query, limit = 5) {
   // Fire all engines in parallel
   const settled = await Promise.allSettled(engines.map(e => e.fn()));
 
-  // Collect results, prioritize by engine rank
-  let bestResults = [];
-  let bestEngine = '';
+  // Merge results from ALL successful engines (deduplicate by URL)
+  const allResults = [];
+  const seenUrls = new Set();
   const failures = [];
 
-  for (let i = 0; i < settled.length; i++) {
-    const { status, value, reason } = settled[i];
-    const engine = engines[i];
+  // Sort by priority so higher-priority engine results come first
+  const sorted = engines
+    .map((e, i) => ({ ...e, result: settled[i] }))
+    .sort((a, b) => a.priority - b.priority);
 
-    if (status === 'fulfilled' && value && value.length > 0) {
-      logger.info('COLLECTOR', `搜尋成功 [${engine.name}] ${value.length} 筆: ${query.slice(0, 40)}...`);
-      // Keep the highest-priority (lowest number) engine's results
-      if (!bestResults.length || engine.priority < engines.find(e => e.name === bestEngine)?.priority) {
-        bestResults = value;
-        bestEngine = engine.name;
+  for (const { name, result } of sorted) {
+    if (result.status === 'fulfilled' && result.value?.length > 0) {
+      let added = 0;
+      for (const r of result.value) {
+        if (r.url && !seenUrls.has(r.url)) {
+          seenUrls.add(r.url);
+          allResults.push(r);
+          added++;
+        }
       }
-    } else if (status === 'rejected') {
-      failures.push(`${engine.name}: ${fmtErr(reason)}`);
-    } else if (status === 'fulfilled' && (!value || value.length === 0)) {
-      failures.push(`${engine.name}: 0 results`);
+      logger.info('COLLECTOR', `[${name}] +${added} 筆 (${query.slice(0, 40)}...)`);
+    } else if (result.status === 'rejected') {
+      failures.push(`${name}: ${fmtErr(result.reason)}`);
+    } else {
+      failures.push(`${name}: 0 results`);
     }
   }
 
-  if (bestResults.length > 0) return bestResults;
+  if (allResults.length > 0) return allResults;
 
   // All failed
   logger.warn('COLLECTOR', `⚠️ 所有搜尋引擎均無結果: ${query.slice(0, 60)}`);

@@ -126,6 +126,8 @@ async function _runGapFillInternal(plan, rawSources, analysis, options) {
   const maxSources = 3; // fewer per gap question
 
   const secondRoundResults = [];
+  // Rate limit breathing room — 讓第一輪 analyzer 的 token 額度恢復
+  await new Promise(r => setTimeout(r, 2000));
   for (const gq of gapQuestions) {
     const question = {
       id: gq.id || `gap_${secondRoundResults.length + 1}`,
