@@ -285,7 +285,7 @@ async function searchBrave(query, limit = 5) {
  * Fires all configured engines simultaneously, returns best results.
  * Much faster than serial fallback (30s worst case vs 70s).
  */
-async function searchWithFallback(query, limit = 5) {
+export async function searchWithFallback(query, limit = 5) {
   // Build engine list (only configured ones)
   const engines = [];
   if (config.firecrawl.apiKey && !firecrawlExhausted)

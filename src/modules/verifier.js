@@ -1,6 +1,7 @@
 import { callClaudeJSON } from '../utils/claude.js';
 import { saveTmp } from '../utils/fileUtils.js';
 import { logger } from '../utils/logger.js';
+import { searchWithFallback } from './collector.js';
 import { VERIFIER_SYSTEM, buildVerifierPrompt } from '../prompts/verifier.prompt.js';
 
 /**
@@ -34,6 +35,48 @@ function gatherContext(section, analysis, rawSources) {
   }
 
   return { dataPoints, sourceSnippets: sourceSnippets.slice(0, 5) }; // limit context
+}
+
+/**
+ * Attempt to verify unverified claims by searching for supporting evidence.
+ * Returns updated claims array with re-verified statuses.
+ */
+async function rescueClaims(claims) {
+  const unverified = claims.filter(c => c.status === 'unverified' && c.number);
+  if (unverified.length === 0) return claims;
+
+  // Batch: max 3 claims per rescue round to avoid API overload
+  const toRescue = unverified.slice(0, 3);
+  logger.info('VERIFIER', `  嘗試補搜驗證 ${toRescue.length} 個未驗證聲明...`);
+
+  for (const claim of toRescue) {
+    try {
+      // Build a search query from the claim text/number
+      const query = claim.text.length > 80 ? claim.text.slice(0, 80) : claim.text;
+      const results = await searchWithFallback(query, 3);
+
+      if (!results || results.length === 0) continue;
+
+      // Check if any search result contains the claimed number
+      const numberStr = String(claim.number).replace(/[%％億萬]/g, '');
+      const found = results.find(r => {
+        const content = (r.markdown || r.content || r.title || '');
+        return content.includes(numberStr) || content.includes(claim.number);
+      });
+
+      if (found) {
+        claim.status = 'verified';
+        claim.source_evidence = `補搜驗證：在 ${found.title || found.url} 中找到對應數據`;
+        claim.source_url = found.url;
+        logger.info('VERIFIER', `  ✓ 補搜成功: "${claim.number}" ← ${found.url}`);
+      }
+    } catch (err) {
+      // Non-fatal: if rescue search fails, claim stays unverified
+      logger.warn('VERIFIER', `  補搜失敗 (${claim.number}): ${err.message}`);
+    }
+  }
+
+  return claims;
 }
 
 /**
@@ -139,9 +182,21 @@ export async function runVerifier(report, analysis, rawSources, options = {}) {
 
     logger.info('VERIFIER', `  ${section.title}: ${summary.verified}✓ ${summary.unverified}✗ ${summary.conflicting}⚡ / ${summary.total_claims} 聲明`);
 
-    // Clean unverified claims from section content
+    // Phase 2: Attempt to rescue unverified claims via search
+    let finalClaims = claims;
     if (summary.unverified > 0) {
-      section.content = cleanUnverifiedClaims(section.content, claims);
+      finalClaims = await rescueClaims(claims);
+      const rescued = finalClaims.filter(c => c.status === 'verified').length - summary.verified;
+      if (rescued > 0) {
+        logger.info('VERIFIER', `  ${section.title}: 補搜救回 ${rescued} 個聲明`);
+        summary.verified += rescued;
+        summary.unverified -= rescued;
+      }
+    }
+
+    // Clean remaining unverified claims from section content
+    if (summary.unverified > 0) {
+      section.content = cleanUnverifiedClaims(section.content, finalClaims);
     }
   }
 
