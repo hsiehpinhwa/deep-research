@@ -100,7 +100,7 @@ function extractJSON(text) {
  * @returns {Promise<string>} 原始文字回應
  */
 export async function callClaude(systemPrompt, userContent, options = {}) {
-  const maxRetries = options.maxRetries ?? 3;
+  const maxRetries = options.maxRetries ?? 5;
   const model = options.model ?? config.anthropic.model;
   const maxTokens = options.maxTokens ?? config.anthropic.maxTokens;
 
@@ -114,9 +114,17 @@ export async function callClaude(systemPrompt, userContent, options = {}) {
       });
       return response.content[0].text;
     } catch (err) {
-      if (attempt === maxRetries) throw err;
-      const wait = Math.pow(2, attempt) * 1000;
-      logger.warn('CLAUDE', `呼叫失敗（第 ${attempt} 次），${wait / 1000}s 後重試：${err.message}`);
+      const status = err?.status || err?.response?.status;
+      const isRateLimit = status === 429;
+      const isRetryable = isRateLimit || status === 529 || (status && status >= 500);
+
+      if (!isRetryable || attempt === maxRetries) throw err;
+
+      // Rate limit: wait 30-60s; other errors: exponential backoff
+      const wait = isRateLimit
+        ? 30_000 + Math.random() * 30_000
+        : Math.pow(2, attempt) * 1000;
+      logger.warn('CLAUDE', `呼叫失敗（第 ${attempt}/${maxRetries} 次），${(wait / 1000).toFixed(0)}s 後重試：${status || ''} ${err.message}`);
       await new Promise(r => setTimeout(r, wait));
     }
   }
