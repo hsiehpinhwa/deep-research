@@ -14,6 +14,29 @@ for (const key of REQUIRED_KEYS) {
   }
 }
 
+// ── Search engine API key diagnostics ──
+const SEARCH_KEYS = [
+  { env: 'BRAVE_SEARCH_API_KEY', name: 'Brave Search' },
+  { env: 'GOOGLE_CSE_API_KEY', name: 'Google CSE (API Key)' },
+  { env: 'GOOGLE_CSE_CX', name: 'Google CSE (CX)' },
+  { env: 'FIRECRAWL_API_KEY', name: 'Firecrawl' },
+  { env: 'EXA_API_KEY', name: 'Exa' },
+];
+
+let configuredEngines = 0;
+for (const { env, name } of SEARCH_KEYS) {
+  const val = process.env[env];
+  if (!val || val.trim() === '') {
+    console.warn(`[CONFIG] ⚠ ${name} 未設定 (${env})`);
+  } else {
+    configuredEngines++;
+    console.log(`[CONFIG] ✓ ${name} 已設定 (${val.slice(0, 6)}...)`);
+  }
+}
+if (configuredEngines === 0) {
+  console.error('[CONFIG] ✗ 沒有任何搜尋引擎 API key 已設定 — 報告將缺乏外部資料來源');
+}
+
 export default {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY,

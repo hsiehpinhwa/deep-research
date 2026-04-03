@@ -8,6 +8,43 @@ const MAX_CONTENT_CHARS = 10000;
 // ── Firecrawl exhaustion flag (module-level, persists across calls within same job) ──
 let firecrawlExhausted = false;
 
+/**
+ * Retry wrapper with exponential backoff.
+ * Only retries transient errors (timeout, reset, 429, 5xx).
+ */
+async function withRetry(fn, { maxRetries = 2, baseDelay = 1000, label = '' } = {}) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const code = err.code || '';
+      const status = err.response?.status;
+      const isRetryable =
+        ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'].includes(code) ||
+        status === 429 ||
+        (status && status >= 500);
+
+      if (!isRetryable || attempt === maxRetries) throw err;
+
+      const delay = baseDelay * Math.pow(2, attempt);
+      logger.warn('COLLECTOR', `${label} 重試 ${attempt + 1}/${maxRetries}（${delay}ms）: ${code || `HTTP ${status}`}`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+/**
+ * Format error details for logging (network code + HTTP status + message).
+ */
+function fmtErr(err) {
+  const parts = [];
+  if (err.code) parts.push(`code=${err.code}`);
+  if (err.syscall) parts.push(`syscall=${err.syscall}`);
+  if (err.response?.status) parts.push(`http=${err.response.status}`);
+  parts.push(err.message?.slice(0, 120));
+  return parts.join(' ');
+}
+
 // ── Taiwan financial media — for market research Pass 2 ──
 
 const TW_FINANCIAL_MEDIA = [
@@ -75,7 +112,7 @@ async function searchFirecrawl(query, limit = 5) {
       firecrawlExhausted = true;
       logger.warn('COLLECTOR', 'Firecrawl credits 用完，本次 job 後續全部跳過 Firecrawl');
     } else {
-      logger.warn('COLLECTOR', `Firecrawl 搜尋失敗：${err.response?.status} ${msg}`);
+      logger.warn('COLLECTOR', `Firecrawl 搜尋失敗：${fmtErr(err)}`);
     }
     return [];
   }
@@ -116,7 +153,7 @@ async function searchGoogle(query, limit = 5) {
     }
     return results;
   } catch (err) {
-    logger.warn('COLLECTOR', `Google CSE 搜尋失敗：${err.response?.status} ${err.message}`);
+    logger.warn('COLLECTOR', `Google CSE 搜尋失敗：${fmtErr(err)}`);
     return [];
   }
 }
@@ -155,7 +192,7 @@ async function scrapeFree(url) {
 
     return text.length > 100 ? text.slice(0, MAX_CONTENT_CHARS) : null;
   } catch (err) {
-    logger.warn('COLLECTOR', `免費抓取失敗 (${url})：${err.message}`);
+    logger.warn('COLLECTOR', `免費抓取失敗 (${url})：${fmtErr(err)}`);
     return null;
   }
 }
@@ -183,7 +220,7 @@ async function scrapeFirecrawl(url) {
         firecrawlExhausted = true;
         logger.warn('COLLECTOR', 'Firecrawl credits 用完，本次 job 後續全部跳過');
       } else {
-        logger.warn('COLLECTOR', `Firecrawl 抓取失敗 (${url})：${msg}`);
+        logger.warn('COLLECTOR', `Firecrawl 抓取失敗 (${url})：${fmtErr(err)}`);
       }
     }
   }
@@ -237,53 +274,68 @@ async function searchBrave(query, limit = 5) {
     }
     return results;
   } catch (err) {
-    const status = err.response?.status;
-    const data = err.response?.data;
-    logger.warn('COLLECTOR', `Brave Search 搜尋失敗：status=${status} msg=${err.message}`);
-    if (data) logger.warn('COLLECTOR', `Brave 錯誤詳情: ${JSON.stringify(data).slice(0, 200)}`);
+    logger.warn('COLLECTOR', `Brave Search 搜尋失敗：${fmtErr(err)}`);
+    if (err.response?.data) logger.warn('COLLECTOR', `Brave 錯誤詳情: ${JSON.stringify(err.response.data).slice(0, 200)}`);
     return [];
   }
 }
 
 /**
- * Four-tier search fallback: Firecrawl → Brave → Google CSE → Exa
+ * Parallel search with priority merging.
+ * Fires all configured engines simultaneously, returns best results.
+ * Much faster than serial fallback (30s worst case vs 70s).
  */
 async function searchWithFallback(query, limit = 5) {
-  // Tier 1: Firecrawl (paid, best quality — search + full content)
-  const fcResults = await searchFirecrawl(query, limit);
-  if (fcResults.length > 0) {
-    logger.info('COLLECTOR', `🔍 搜尋成功 [Firecrawl] ${fcResults.length} 筆: ${query.slice(0, 40)}...`);
-    return fcResults;
+  // Build engine list (only configured ones)
+  const engines = [];
+  if (config.firecrawl.apiKey && !firecrawlExhausted)
+    engines.push({ name: 'Firecrawl', priority: 1, fn: () => withRetry(() => searchFirecrawl(query, limit), { label: 'Firecrawl' }) });
+  if (config.brave?.apiKey)
+    engines.push({ name: 'Brave', priority: 2, fn: () => withRetry(() => searchBrave(query, limit), { label: 'Brave' }) });
+  if (config.google?.cseApiKey && config.google?.cseCx)
+    engines.push({ name: 'Google', priority: 3, fn: () => withRetry(() => searchGoogle(query, limit), { label: 'Google' }) });
+  if (config.exa?.apiKey)
+    engines.push({ name: 'Exa', priority: 4, fn: () => withRetry(() => searchExa(query, limit), { label: 'Exa' }) });
+
+  if (engines.length === 0) {
+    logger.warn('COLLECTOR', `⚠️ 沒有任何搜尋引擎可用，跳過: ${query.slice(0, 60)}`);
+    return [];
   }
 
-  // Tier 2: Brave Search (free 2000/month, good quality)
-  const hasBrave = !!config.brave?.apiKey;
-  logger.info('COLLECTOR', `Firecrawl 無結果，Brave 備援 (key=${hasBrave ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
-  const braveResults = await searchBrave(query, limit);
-  if (braveResults.length > 0) {
-    logger.info('COLLECTOR', `🔍 搜尋成功 [Brave] ${braveResults.length} 筆: ${query.slice(0, 40)}...`);
-    return braveResults;
+  // Fire all engines in parallel
+  const settled = await Promise.allSettled(engines.map(e => e.fn()));
+
+  // Collect results, prioritize by engine rank
+  let bestResults = [];
+  let bestEngine = '';
+  const failures = [];
+
+  for (let i = 0; i < settled.length; i++) {
+    const { status, value, reason } = settled[i];
+    const engine = engines[i];
+
+    if (status === 'fulfilled' && value && value.length > 0) {
+      logger.info('COLLECTOR', `搜尋成功 [${engine.name}] ${value.length} 筆: ${query.slice(0, 40)}...`);
+      // Keep the highest-priority (lowest number) engine's results
+      if (!bestResults.length || engine.priority < engines.find(e => e.name === bestEngine)?.priority) {
+        bestResults = value;
+        bestEngine = engine.name;
+      }
+    } else if (status === 'rejected') {
+      failures.push(`${engine.name}: ${fmtErr(reason)}`);
+    } else if (status === 'fulfilled' && (!value || value.length === 0)) {
+      failures.push(`${engine.name}: 0 results`);
+    }
   }
 
-  // Tier 3: Google Custom Search (free 100/day)
-  const hasGoogle = !!(config.google?.cseApiKey && config.google?.cseCx);
-  logger.info('COLLECTOR', `Brave 無結果，Google CSE 備援 (key=${hasGoogle ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
-  const googleResults = await searchGoogle(query, limit);
-  if (googleResults.length > 0) {
-    logger.info('COLLECTOR', `🔍 搜尋成功 [Google CSE] ${googleResults.length} 筆: ${query.slice(0, 40)}...`);
-    return googleResults;
-  }
+  if (bestResults.length > 0) return bestResults;
 
-  // Tier 4: Exa (neural search)
-  const hasExa = !!config.exa?.apiKey;
-  logger.info('COLLECTOR', `Google CSE 無結果，Exa 備援 (key=${hasExa ? '有' : '❌ 無'}): ${query.slice(0, 50)}...`);
-  const exaResults = await searchExa(query, limit);
-  if (exaResults.length > 0) {
-    logger.info('COLLECTOR', `🔍 搜尋成功 [Exa] ${exaResults.length} 筆: ${query.slice(0, 40)}...`);
-  } else {
-    logger.warn('COLLECTOR', `⚠️ 所有搜尋引擎均無結果: ${query.slice(0, 60)}`);
+  // All failed
+  logger.warn('COLLECTOR', `⚠️ 所有搜尋引擎均無結果: ${query.slice(0, 60)}`);
+  if (failures.length > 0) {
+    logger.warn('COLLECTOR', `  失敗詳情: ${failures.join(' | ')}`);
   }
-  return exaResults;
+  return [];
 }
 
 /**
@@ -560,7 +612,7 @@ async function searchExa(query, numResults = 5) {
       markdown: r.text || '',
     }));
   } catch (err) {
-    logger.warn('COLLECTOR', `Exa 備援搜尋失敗：${err.response?.status}`);
+    logger.warn('COLLECTOR', `Exa 備援搜尋失敗：${fmtErr(err)}`);
     return [];
   }
 }
