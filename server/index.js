@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { createReadStream, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
@@ -16,6 +17,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '3');
+let activeJobCount = 0;
+
 // Support comma-separated origins: "https://dorphinai.com,https://dorphinai.vercel.app"
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://localhost:5500')
   .split(',').map(s => s.trim());
@@ -28,25 +33,58 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// ── SEC-006: Rate limiting ──
+const jobLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 分鐘
+  max: 5,                    // 每 IP 最多 5 個任務
+  message: { error: '提交過於頻繁，請 15 分鐘後再試' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,  // 1 分鐘
+  max: 60,                   // 每 IP 60 次查詢
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general rate limit to all API routes
+app.use('/api/', apiLimiter);
+
 // Serve static frontend files from public/
 app.use(express.static(join(__dirname, '..', 'public')));
 
 // POST /api/jobs — create research job
-app.post('/api/jobs', async (req, res) => {
+app.post('/api/jobs', jobLimiter, async (req, res) => {
   const { topic, email } = req.body || {};
 
   if (!topic?.trim())
     return res.status(400).json({ error: '研究主題不可為空' });
+
+  // SEC-005: Input validation — length limit + basic sanitization
+  const cleanTopic = topic.trim().slice(0, 200);
+  if (cleanTopic.length < 2)
+    return res.status(400).json({ error: '研究主題至少需要 2 個字' });
+
   if (!email?.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
     return res.status(400).json({ error: 'Email 格式不正確' });
 
+  // OPS-001: Concurrency control
+  if (activeJobCount >= MAX_CONCURRENT_JOBS) {
+    return res.status(429).json({ error: `系統忙碌中（${activeJobCount}/${MAX_CONCURRENT_JOBS} 任務執行中），請稍後再試` });
+  }
+
   const jobId = uuidv4();
-  await createJob(jobId, topic.trim(), email.trim());
+  await createJob(jobId, cleanTopic, email.trim());
 
   // Fire and forget — don't await
-  runJob(jobId, topic.trim(), email.trim()).catch(async (err) => {
-    await updateJobStatus(jobId, 'error', { error_message: err.message });
-  });
+  activeJobCount++;
+  runJob(jobId, cleanTopic, email.trim())
+    .catch(async (err) => {
+      await updateJobStatus(jobId, 'error', { error_message: err.message });
+    })
+    .finally(() => { activeJobCount--; });
 
   res.status(201).json({ jobId });
 });
@@ -91,8 +129,11 @@ app.get('/api/jobs/:id/download/:filename', async (req, res) => {
   createReadStream(filePath).pipe(res);
 });
 
-// GET /health/search — diagnose search engine availability
+// GET /health/search — diagnose search engine availability (SEC-003: requires admin token)
 app.get('/health/search', async (req, res) => {
+  if (ADMIN_TOKEN && req.query.token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: 'Unauthorized. Provide ?token=<ADMIN_TOKEN>' });
+  }
   const dns = await import('dns');
   const { default: config } = await import('../src/config.js');
 
